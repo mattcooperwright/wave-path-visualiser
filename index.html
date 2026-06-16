@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Wave Path Visualiser — an animation tool for creating flowing, gradient-coloured line animations with draggable control points and high-resolution export.">
+<title>Wave Path Visualiser</title>
+<style>
+  :root{
+    --bg:#efede8;
+    --panel:rgba(255,255,255,.88);
+    --line:rgba(0,0,0,.12);
+    --ink:#202020;
+    --muted:#666;
+    --accent:#5e54e8;
+  }
+  html,body{
+    margin:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink)
+  }
+  canvas{display:block;width:100vw;height:100vh;cursor:crosshair}
+  .panel{
+    position:fixed;top:16px;left:16px;width:360px;max-height:calc(100vh - 32px);
+    overflow:auto;background:var(--panel);backdrop-filter:blur(14px);
+    border:1px solid var(--line);border-radius:16px;padding:14px;
+    box-shadow:0 12px 30px rgba(0,0,0,.08);
+    transition:transform .22s ease,opacity .22s ease;
+    z-index:20;
+  }
+  .panel.hidden{
+    transform:translateX(calc(-100% - 28px));
+    opacity:0;
+    pointer-events:none;
+  }
+  .toggle{
+    position:fixed;top:16px;left:16px;z-index:21;
+    appearance:none;background:rgba(255,255,255,.94);border:1px solid var(--line);
+    border-radius:999px;padding:10px 14px;font-size:12px;cursor:pointer;
+    box-shadow:0 8px 24px rgba(0,0,0,.08)
+  }
+  .toggle.shifted{left:392px}
+  h1{margin:0 0 4px;font-size:15px}
+  p{margin:0 0 12px;font-size:12px;line-height:1.35;color:var(--muted)}
+  .row{display:grid;grid-template-columns:118px 1fr 54px;gap:8px;align-items:center;margin:9px 0;font-size:12px}
+  .row input[type=range]{width:100%}
+  .value{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+  .subhead{margin-top:12px;margin-bottom:4px;font-size:11px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.05em}
+  .buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  button.btn{
+    appearance:none;background:#fff;border:1px solid var(--line);border-radius:10px;
+    padding:8px 10px;font-size:12px;cursor:pointer;color:var(--ink)
+  }
+  button.btn:hover{background:#f6f6f6}
+  .swatches{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .swatch{width:24px;height:24px;border-radius:999px;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.16);cursor:pointer;padding:0}
+  .selected-info{
+    display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.03);
+    border:1px solid rgba(0,0,0,.06);border-radius:10px;padding:8px 10px;font-size:12px;margin-top:6px
+  }
+  .dot{width:14px;height:14px;border-radius:50%;display:inline-block;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.16);vertical-align:middle;margin-right:8px}
+  .hint{
+    position:fixed;right:16px;bottom:16px;max-width:420px;background:rgba(255,255,255,.78);
+    backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:14px;
+    padding:10px 12px;font-size:12px;line-height:1.35;color:var(--muted);z-index:10
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<button id="togglePanel" class="toggle shifted">Hide controls</button>
+
+<section id="panel" class="panel">
+  <h1>Wave Path Visualiser</h1>
+  <p>Smoother spline, hidable controls, fixed gradient colours, animated wave motion, background colour control, and high-resolution PNG export.</p>
+
+  <div class="subhead">Shape</div>
+  <div class="row"><label>Tube width</label><input id="width" type="range" min="50" max="240" value="120"><div id="widthVal" class="value"></div></div>
+  <div class="row"><label>Smoothness</label><input id="smoothness" type="range" min="0.20" max="1.00" step="0.01" value="0.92"><div id="smoothnessVal" class="value"></div></div>
+
+  <div class="subhead">Texture</div>
+  <div class="row"><label>Grain amount</label><input id="grain" type="range" min="0" max="1" step="0.01" value="0.55"><div id="grainVal" class="value"></div></div>
+  <div class="row"><label>Grain scale</label><input id="grainScale" type="range" min="0.6" max="3.5" step="0.1" value="1.4"><div id="grainScaleVal" class="value"></div></div>
+
+  <div class="subhead">Motion</div>
+  <div class="row"><label>Wave amplitude</label><input id="amplitude" type="range" min="0" max="90" step="1" value="22"><div id="amplitudeVal" class="value"></div></div>
+  <div class="row"><label>Wave speed</label><input id="speed" type="range" min="0" max="4" step="0.01" value="1.15"><div id="speedVal" class="value"></div></div>
+  <div class="row"><label>Wave frequency</label><input id="frequency" type="range" min="0.2" max="4.0" step="0.01" value="1.85"><div id="frequencyVal" class="value"></div></div>
+  <div class="row"><label>Show anchors</label><input id="showUI" type="range" min="0" max="1" step="1" value="1"><div id="showUIVal" class="value"></div></div>
+
+  <div class="subhead">Background</div>
+  <div class="selected-info">
+    <div><span id="bgDot" class="dot" style="background:#efede8"></span><span>Background colour</span></div>
+    <input id="bgColour" type="color" value="#efede8" title="Background colour">
+  </div>
+
+  <div class="subhead">Colours</div>
+  <div class="selected-info">
+    <div><span id="selectedDot" class="dot" style="background:#d6c541"></span><span id="selectedLabel">Selected point: 1</span></div>
+    <input id="customColour" type="color" value="#d6c541" title="Selected point colour">
+  </div>
+  <div class="swatches">
+    <button class="swatch" data-colour="#d6c541" style="background:#d6c541" title="Gold"></button>
+    <button class="swatch" data-colour="#e6af39" style="background:#e6af39" title="Warm gold"></button>
+    <button class="swatch" data-colour="#ef5a2b" style="background:#ef5a2b" title="Orange"></button>
+    <button class="swatch" data-colour="#e43870" style="background:#e43870" title="Pink"></button>
+    <button class="swatch" data-colour="#5b20b7" style="background:#5b20b7" title="Purple"></button>
+    <button class="swatch" data-colour="#2f4ca7" style="background:#2f4ca7" title="Blue"></button>
+    <button class="swatch" data-colour="#68a733" style="background:#68a733" title="Green"></button>
+  </div>
+
+  <div class="subhead">Export</div>
+  <div class="row"><label>PNG scale</label><input id="exportScale" type="range" min="1" max="6" step="1" value="3"><div id="exportScaleVal" class="value"></div></div>
+
+  <div class="buttons">
+    <button id="reset" class="btn">Reset</button>
+    <button id="pause" class="btn">Pause</button>
+    <button id="applyPalette" class="btn">Reapply palette</button>
+    <button id="save" class="btn">Save hi-res PNG</button>
+  </div>
+</section>
+
+<div class="hint">
+  Click a point to select it, then recolour it with the swatches or colour picker. Double-click to add a point. Alt-click a point to delete it. Hide the controls while composing.
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  const panel = document.getElementById("panel");
+  const togglePanelBtn = document.getElementById("togglePanel");
+
+  const controls = {
+    width: document.getElementById("width"),
+    smoothness: document.getElementById("smoothness"),
+    grain: document.getElementById("grain"),
+    grainScale: document.getElementById("grainScale"),
+    amplitude: document.getElementById("amplitude"),
+    speed: document.getElementById("speed"),
+    frequency: document.getElementById("frequency"),
+    showUI: document.getElementById("showUI"),
+    exportScale: document.getElementById("exportScale"),
+    bgColour: document.getElementById("bgColour")
+  };
+
+  const values = {
+    width: document.getElementById("widthVal"),
+    smoothness: document.getElementById("smoothnessVal"),
+    grain: document.getElementById("grainVal"),
+    grainScale: document.getElementById("grainScaleVal"),
+    amplitude: document.getElementById("amplitudeVal"),
+    speed: document.getElementById("speedVal"),
+    frequency: document.getElementById("frequencyVal"),
+    showUI: document.getElementById("showUIVal"),
+    exportScale: document.getElementById("exportScaleVal")
+  };
+
+  const palette = ["#d6c541","#e6af39","#ef5a2b","#e43870","#5b20b7","#2f4ca7","#68a733"];
+
+  let dpr = 1;
+  let points = [];
+  let selectedIndex = 0;
+  let dragging = null;
+  let hovered = null;
+  let playing = true;
+  let time = 0;
+  let panelHidden = false;
+
+  function defaultPoints() {
+    const w = innerWidth, h = innerHeight;
+    return [
+      { x: w*0.03, y: h*0.55, colour: "#d6c541" },
+      { x: w*0.14, y: h*0.72, colour: "#e6af39" },
+      { x: w*0.30, y: h*0.26, colour: "#ef5a2b" },
+      { x: w*0.47, y: h*0.72, colour: "#e43870" },
+      { x: w*0.63, y: h*0.40, colour: "#5b20b7" },
+      { x: w*0.80, y: h*0.72, colour: "#2f4ca7" },
+      { x: w*0.96, y: h*0.55, colour: "#68a733" }
+    ];
+  }
+
+  function setCanvasTransform(c, scale, widthPx, heightPx) {
+    c.width = widthPx;
+    c.height = heightPx;
+    c.getContext("2d").setTransform(scale, 0, 0, scale, 0, 0);
+  }
+
+  function resizeMain() {
+    dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
+    setCanvasTransform(canvas, dpr, Math.floor(innerWidth * dpr), Math.floor(innerHeight * dpr));
+  }
+
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  function hexToRgb(hex) {
+    const s = hex.replace("#","");
+    const full = s.length === 3 ? s.split("").map(x => x + x).join("") : s;
+    const n = parseInt(full, 16);
+    return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+  }
+
+  function rgbCss(c, a=1) { return `rgba(${c.r|0},${c.g|0},${c.b|0},${a})`; }
+
+  function mixColours(a, b, t) {
+    const ca = hexToRgb(a), cb = hexToRgb(b);
+    return {
+      r: ca.r + (cb.r - ca.r) * t,
+      g: ca.g + (cb.g - ca.g) * t,
+      b: ca.b + (cb.b - ca.b) * t
+    };
+  }
+
+  function updateSelectedUI() {
+    const p = points[selectedIndex];
+    if (!p) return;
+    document.getElementById("selectedLabel").textContent = `Selected point: ${selectedIndex + 1}`;
+    document.getElementById("selectedDot").style.background = p.colour;
+    document.getElementById("customColour").value = p.colour;
+  }
+
+  function updateBackgroundUI() {
+    document.getElementById("bgDot").style.background = controls.bgColour.value;
+    document.documentElement.style.setProperty("--bg", controls.bgColour.value);
+  }
+
+  function setSelectedColour(colour) {
+    if (!points[selectedIndex]) return;
+    points[selectedIndex].colour = colour;
+    updateSelectedUI();
+  }
+
+  function applyPaletteToPoints() {
+    points.forEach((p, i) => {
+      const t = i / Math.max(1, points.length - 1);
+      const scaled = t * (palette.length - 1);
+      const idx = Math.floor(scaled);
+      const frac = scaled - idx;
+      const c = mixColours(
+        palette[clamp(idx, 0, palette.length - 1)],
+        palette[clamp(idx + 1, 0, palette.length - 1)],
+        frac
+      );
+      const toHex = n => Math.round(n).toString(16).padStart(2, "0");
+      p.colour = `#${toHex(c.r)}${toHex(c.g)}${toHex(c.b)}`;
+    });
+    updateSelectedUI();
+  }
+
+  function extrapolatedPoint(a, b) {
+    return { x: 2*a.x - b.x, y: 2*a.y - b.y, colour: a.colour };
+  }
+
+  function tj(ti, pi, pj, alpha = 0.5) {
+    const d = Math.hypot(pj.x - pi.x, pj.y - pi.y);
+    return ti + Math.pow(Math.max(d, 0.0001), alpha);
+  }
+
+  function splinePoint(p0, p1, p2, p3, t) {
+    const t0 = 0;
+    const t1 = tj(t0, p0, p1);
+    const t2 = tj(t1, p1, p2);
+    const t3 = tj(t2, p2, p3);
+
+    const tt = t1 + (t2 - t1) * t;
+
+    const A1 = {
+      x: ((t1 - tt)/(t1 - t0))*p0.x + ((tt - t0)/(t1 - t0))*p1.x,
+      y: ((t1 - tt)/(t1 - t0))*p0.y + ((tt - t0)/(t1 - t0))*p1.y
+    };
+    const A2 = {
+      x: ((t2 - tt)/(t2 - t1))*p1.x + ((tt - t1)/(t2 - t1))*p2.x,
+      y: ((t2 - tt)/(t2 - t1))*p1.y + ((tt - t1)/(t2 - t1))*p2.y
+    };
+    const A3 = {
+      x: ((t3 - tt)/(t3 - t2))*p2.x + ((tt - t2)/(t3 - t2))*p3.x,
+      y: ((t3 - tt)/(t3 - t2))*p2.y + ((tt - t2)/(t3 - t2))*p3.y
+    };
+
+    const B1 = {
+      x: ((t2 - tt)/(t2 - t0))*A1.x + ((tt - t0)/(t2 - t0))*A2.x,
+      y: ((t2 - tt)/(t2 - t0))*A1.y + ((tt - t0)/(t2 - t0))*A2.y
+    };
+    const B2 = {
+      x: ((t3 - tt)/(t3 - t1))*A2.x + ((tt - t1)/(t3 - t1))*A3.x,
+      y: ((t3 - tt)/(t3 - t1))*A2.y + ((tt - t1)/(t3 - t1))*A3.y
+    };
+
+    const C = {
+      x: ((t2 - tt)/(t2 - t1))*B1.x + ((tt - t1)/(t2 - t1))*B2.x,
+      y: ((t2 - tt)/(t2 - t1))*B1.y + ((tt - t1)/(t2 - t1))*B2.y
+    };
+
+    const soft = +controls.smoothness.value;
+    return {
+      x: p1.x + (C.x - p1.x) * soft + (1 - soft) * (p2.x - p1.x) * t,
+      y: p1.y + (C.y - p1.y) * soft + (1 - soft) * (p2.y - p1.y) * t
+    };
+  }
+
+  function sampleSpline(samplesPerSegment = 60) {
+    const out = [];
+    if (points.length < 2) return out;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p0 = i === 0 ? extrapolatedPoint(p1, p2) : points[i - 1];
+      const p3 = i + 2 >= points.length ? extrapolatedPoint(p2, p1) : points[i + 2];
+
+      for (let j = 0; j < samplesPerSegment; j++) {
+        const lt = j / samplesPerSegment;
+        const p = splinePoint(p0, p1, p2, p3, lt);
+        out.push({ ...p, t: (i + lt) / (points.length - 1) });
+      }
+    }
+    out.push({ ...points[points.length - 1], t: 1 });
+    return out;
+  }
+
+  function animateSamples(samples) {
+    const amp = +controls.amplitude.value;
+    const speed = +controls.speed.value;
+    const freq = +controls.frequency.value;
+    if (amp <= 0) return samples;
+
+    return samples.map((p, i) => {
+      const prev = samples[Math.max(0, i - 1)];
+      const next = samples[Math.min(samples.length - 1, i + 1)];
+      const tx = next.x - prev.x;
+      const ty = next.y - prev.y;
+      const len = Math.hypot(tx, ty) || 1;
+      const nx = -ty / len;
+      const ny = tx / len;
+
+      const phase = p.t * Math.PI * 2 * freq - time * speed * 2.2;
+      const envelope = 0.72 + 0.28 * Math.sin(p.t * Math.PI);
+      const offset = Math.sin(phase) * amp * envelope;
+
+      return { ...p, x: p.x + nx * offset, y: p.y + ny * offset };
+    });
+  }
+
+  function colourAt(t) {
+    t = clamp(t, 0, 1);
+    const scaled = t * (points.length - 1);
+    const i = Math.floor(scaled);
+    const frac = scaled - i;
+    const a = points[clamp(i, 0, points.length - 1)];
+    const b = points[clamp(i + 1, 0, points.length - 1)];
+    return mixColours(a.colour, b.colour, frac);
+  }
+
+  function drawBackground(targetCtx, viewW, viewH, noiseDensity = 0.00055) {
+    const bg = controls.bgColour.value;
+    const rgb = hexToRgb(bg);
+    targetCtx.fillStyle = bg;
+    targetCtx.fillRect(0, 0, viewW, viewH);
+
+    const count = Math.floor(viewW * viewH * noiseDensity);
+    const light = `rgba(255,255,255,0.045)`;
+    const darkAlpha = (rgb.r + rgb.g + rgb.b) / 3 > 160 ? 0.04 : 0.06;
+    const dark = `rgba(0,0,0,${darkAlpha})`;
+
+    for (let i = 0; i < count; i++) {
+      targetCtx.fillStyle = Math.random() > 0.52 ? dark : light;
+      const x = Math.random() * viewW;
+      const y = Math.random() * viewH;
+      const s = 0.5 + Math.random() * 1.6;
+      targetCtx.fillRect(x, y, s, s);
+    }
+  }
+
+  function strokeRoundedPath(targetCtx, samples, width, style) {
+    targetCtx.save();
+    targetCtx.lineCap = "round";
+    targetCtx.lineJoin = "round";
+    targetCtx.lineWidth = width;
+    targetCtx.strokeStyle = style;
+    targetCtx.beginPath();
+    samples.forEach((p, i) => i ? targetCtx.lineTo(p.x, p.y) : targetCtx.moveTo(p.x, p.y));
+    targetCtx.stroke();
+    targetCtx.restore();
+  }
+
+  function renderScene(targetCtx, viewW, viewH, pixelW, pixelH, scale, showAnchors = true) {
+    drawBackground(targetCtx, viewW, viewH);
+
+    const samples = animateSamples(sampleSpline());
+
+    const mask = document.createElement("canvas");
+    const colour = document.createElement("canvas");
+    const grain = document.createElement("canvas");
+    setCanvasTransform(mask, scale, pixelW, pixelH);
+    setCanvasTransform(colour, scale, pixelW, pixelH);
+    setCanvasTransform(grain, scale, pixelW, pixelH);
+    const maskCtx = mask.getContext("2d");
+    const colourCtx = colour.getContext("2d");
+    const grainCtx = grain.getContext("2d");
+
+    maskCtx.clearRect(0, 0, viewW, viewH);
+    strokeRoundedPath(maskCtx, samples, +controls.width.value, "#fff");
+
+    colourCtx.clearRect(0, 0, viewW, viewH);
+    colourCtx.save();
+    colourCtx.lineCap = "round";
+    colourCtx.lineJoin = "round";
+    colourCtx.lineWidth = +controls.width.value;
+    for (let i = 1; i < samples.length; i++) {
+      const a = samples[i - 1];
+      const b = samples[i];
+      colourCtx.strokeStyle = rgbCss(colourAt((a.t + b.t) * 0.5), 1);
+      colourCtx.beginPath();
+      colourCtx.moveTo(a.x, a.y);
+      colourCtx.lineTo(b.x, b.y);
+      colourCtx.stroke();
+    }
+    colourCtx.restore();
+    colourCtx.save();
+    colourCtx.globalCompositeOperation = "destination-in";
+    colourCtx.drawImage(mask, 0, 0, viewW, viewH);
+    colourCtx.restore();
+
+    grainCtx.clearRect(0, 0, viewW, viewH);
+    const grainAmount = +controls.grain.value;
+    if (grainAmount > 0) {
+      const smallW = Math.max(160, Math.floor(pixelW / (5 / +controls.grainScale.value)));
+      const smallH = Math.max(100, Math.floor(pixelH / (5 / +controls.grainScale.value)));
+      const tmp = document.createElement("canvas");
+      tmp.width = smallW;
+      tmp.height = smallH;
+      const tctx = tmp.getContext("2d");
+      const img = tctx.createImageData(smallW, smallH);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const n = Math.random() * 255;
+        d[i] = n; d[i + 1] = n; d[i + 2] = n; d[i + 3] = Math.floor(255 * grainAmount);
+      }
+      tctx.putImageData(img, 0, 0);
+
+      grainCtx.save();
+      grainCtx.globalAlpha = 0.28 * grainAmount;
+      grainCtx.imageSmoothingEnabled = false;
+      grainCtx.drawImage(tmp, 0, 0, viewW, viewH);
+      grainCtx.restore();
+
+      grainCtx.save();
+      grainCtx.globalCompositeOperation = "destination-in";
+      grainCtx.drawImage(mask, 0, 0, viewW, viewH);
+      grainCtx.restore();
+    }
+
+    targetCtx.save();
+    targetCtx.drawImage(colour, 0, 0, viewW, viewH);
+    targetCtx.globalCompositeOperation = "multiply";
+    targetCtx.drawImage(grain, 0, 0, viewW, viewH);
+    targetCtx.globalCompositeOperation = "screen";
+    targetCtx.globalAlpha = 0.12 * +controls.grain.value;
+    targetCtx.drawImage(grain, 0, 0, viewW, viewH);
+    targetCtx.restore();
+
+    if (showAnchors && +controls.showUI.value === 1) {
+      targetCtx.save();
+      const preview = sampleSpline(24);
+      targetCtx.lineWidth = 1;
+      targetCtx.strokeStyle = "rgba(0,0,0,.18)";
+      targetCtx.setLineDash([4, 6]);
+      targetCtx.beginPath();
+      preview.forEach((p, i) => i ? targetCtx.lineTo(p.x, p.y) : targetCtx.moveTo(p.x, p.y));
+      targetCtx.stroke();
+      targetCtx.setLineDash([]);
+
+      points.forEach((p, i) => {
+        const active = i === selectedIndex;
+        const hot = i === hovered;
+        targetCtx.beginPath();
+        targetCtx.arc(p.x, p.y, active ? 12 : hot ? 10 : 9, 0, Math.PI * 2);
+        targetCtx.fillStyle = p.colour;
+        targetCtx.fill();
+        targetCtx.lineWidth = active ? 4 : 3;
+        targetCtx.strokeStyle = "#fff";
+        targetCtx.stroke();
+        targetCtx.lineWidth = active ? 2 : 1;
+        targetCtx.strokeStyle = active ? "rgba(94,84,232,.95)" : "rgba(0,0,0,.25)";
+        targetCtx.stroke();
+      });
+      targetCtx.restore();
+    }
+  }
+
+  function updateLabels() {
+    values.width.textContent = controls.width.value;
+    values.smoothness.textContent = (+controls.smoothness.value).toFixed(2);
+    values.grain.textContent = (+controls.grain.value).toFixed(2);
+    values.grainScale.textContent = (+controls.grainScale.value).toFixed(1);
+    values.amplitude.textContent = controls.amplitude.value;
+    values.speed.textContent = (+controls.speed.value).toFixed(2);
+    values.frequency.textContent = (+controls.frequency.value).toFixed(2);
+    values.showUI.textContent = +controls.showUI.value ? "on" : "off";
+    values.exportScale.textContent = `${controls.exportScale.value}x`;
+  }
+
+  function pointerPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function nearestPoint(pos, threshold = 26) {
+    let best = null, bestDist = Infinity;
+    points.forEach((p, i) => {
+      const d = Math.hypot(p.x - pos.x, p.y - pos.y);
+      if (d < bestDist && d < threshold) {
+        best = i;
+        bestDist = d;
+      }
+    });
+    return best;
+  }
+
+  function frame() {
+    if (playing) time += 1 / 60;
+    renderScene(ctx, innerWidth, innerHeight, canvas.width, canvas.height, dpr, true);
+    requestAnimationFrame(frame);
+  }
+
+  function exportPNG() {
+    const scale = +controls.exportScale.value;
+    const exportCanvas = document.createElement("canvas");
+    const pixelW = Math.floor(innerWidth * scale);
+    const pixelH = Math.floor(innerHeight * scale);
+    setCanvasTransform(exportCanvas, scale, pixelW, pixelH);
+    const ectx = exportCanvas.getContext("2d");
+
+    renderScene(ectx, innerWidth, innerHeight, pixelW, pixelH, scale, false);
+
+    exportCanvas.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `wave-path-visualiser-${scale}x.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1200);
+    }, "image/png");
+  }
+
+  function togglePanel() {
+    panelHidden = !panelHidden;
+    panel.classList.toggle("hidden", panelHidden);
+    togglePanelBtn.classList.toggle("shifted", !panelHidden);
+    togglePanelBtn.textContent = panelHidden ? "Show controls" : "Hide controls";
+  }
+
+  canvas.addEventListener("pointerdown", e => {
+    const pos = pointerPos(e);
+    const hit = nearestPoint(pos);
+    if (hit !== null && e.altKey && points.length > 2) {
+      points.splice(hit, 1);
+      selectedIndex = clamp(selectedIndex, 0, points.length - 1);
+      updateSelectedUI();
+      return;
+    }
+    if (hit !== null) {
+      selectedIndex = hit;
+      updateSelectedUI();
+      dragging = hit;
+      canvas.setPointerCapture(e.pointerId);
+    }
+  });
+
+  canvas.addEventListener("pointermove", e => {
+    const pos = pointerPos(e);
+    hovered = nearestPoint(pos);
+    if (dragging !== null) {
+      points[dragging].x = pos.x;
+      points[dragging].y = pos.y;
+    }
+  });
+
+  canvas.addEventListener("pointerup", e => {
+    dragging = null;
+    try { canvas.releasePointerCapture(e.pointerId); } catch {}
+  });
+
+  canvas.addEventListener("dblclick", e => {
+    const pos = pointerPos(e);
+    let insertAt = points.length - 1;
+    let bestDistance = Infinity;
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i], b = points[i + 1];
+      const vx = b.x - a.x, vy = b.y - a.y;
+      const len2 = vx * vx + vy * vy || 1;
+      const t = clamp(((pos.x - a.x) * vx + (pos.y - a.y) * vy) / len2, 0, 1);
+      const px = a.x + vx * t, py = a.y + vy * t;
+      const d = Math.hypot(pos.x - px, pos.y - py);
+      if (d < bestDistance) {
+        bestDistance = d;
+        insertAt = i;
+      }
+    }
+    const refColour = points[insertAt + 1] ? points[insertAt + 1].colour : palette[palette.length - 1];
+    points.splice(insertAt + 1, 0, { x: pos.x, y: pos.y, colour: refColour });
+    selectedIndex = insertAt + 1;
+    updateSelectedUI();
+  });
+
+  document.querySelectorAll(".swatch").forEach(btn => {
+    btn.addEventListener("click", () => setSelectedColour(btn.dataset.colour));
+  });
+
+  document.getElementById("customColour").addEventListener("input", e => setSelectedColour(e.target.value));
+  controls.bgColour.addEventListener("input", updateBackgroundUI);
+  document.getElementById("reset").addEventListener("click", () => {
+    points = defaultPoints();
+    selectedIndex = 0;
+    time = 0;
+    updateSelectedUI();
+  });
+  document.getElementById("pause").addEventListener("click", e => {
+    playing = !playing;
+    e.currentTarget.textContent = playing ? "Pause" : "Play";
+  });
+  document.getElementById("applyPalette").addEventListener("click", applyPaletteToPoints);
+  document.getElementById("save").addEventListener("click", exportPNG);
+  togglePanelBtn.addEventListener("click", togglePanel);
+  Object.values(controls).forEach(input => input.addEventListener("input", updateLabels));
+
+  addEventListener("resize", () => {
+    resizeMain();
+    points = defaultPoints();
+    selectedIndex = clamp(selectedIndex, 0, points.length - 1);
+    updateSelectedUI();
+  });
+
+  resizeMain();
+  points = defaultPoints();
+  updateLabels();
+  updateSelectedUI();
+  updateBackgroundUI();
+  frame();
+})();
+</script>
+</body>
+</html>

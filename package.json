@@ -1,0 +1,17 @@
+{
+  "name": "wave-path-visualiser",
+  "version": "1.0.0",
+  "description": "An interactive animation tool for creating flowing, gradient-coloured line animations with draggable control points and high-resolution export.",
+  "main": "index.html",
+  "scripts": {
+    "dev": "python3 -m http.server 8000"
+  },
+  "keywords": [
+    "animation",
+    "generative",
+    "canvas",
+    "visualization"
+  ],
+  "author": "",
+  "license": "MIT"
+}
