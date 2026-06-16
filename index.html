@@ -298,9 +298,14 @@
     };
   }
 
-  function sampleSpline(samplesPerSegment = 60) {
+  function sampleSpline(samplesPerSegment = null) {
     const out = [];
     if (points.length < 2) return out;
+
+    if (samplesPerSegment === null) {
+      const smoothness = +controls.smoothness.value;
+      samplesPerSegment = Math.ceil(80 + smoothness * 40);
+    }
 
     for (let i = 0; i < points.length - 1; i++) {
       const p1 = points[i];
