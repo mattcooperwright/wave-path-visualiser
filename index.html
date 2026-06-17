@@ -120,7 +120,7 @@
 </section>
 
 <div class="hint">
-  Click a point to select it, then recolour it with the swatches or colour picker. Double-click to add a point. Alt-click a point to delete it. Hide the controls while composing.
+  Click a point to select it. Double-click to add a point. Alt-click to delete. Drag the blue handles to adjust curve angles. Recolour in the panel or with swatches.
 </div>
 
 <script>
@@ -162,6 +162,7 @@
   let points = [];
   let selectedIndex = 0;
   let dragging = null;
+  let draggingHandle = null;
   let hovered = null;
   let playing = true;
   let time = 0;
@@ -169,7 +170,7 @@
 
   function defaultPoints() {
     const w = innerWidth, h = innerHeight;
-    return [
+    const pts = [
       { x: w*0.03, y: h*0.55, colour: "#d6c541" },
       { x: w*0.14, y: h*0.72, colour: "#e6af39" },
       { x: w*0.30, y: h*0.26, colour: "#ef5a2b" },
@@ -178,6 +179,25 @@
       { x: w*0.80, y: h*0.72, colour: "#2f4ca7" },
       { x: w*0.96, y: h*0.55, colour: "#68a733" }
     ];
+    return pts.map((p, i) => ({ ...p, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } }));
+  }
+
+  function autoHandles(pts) {
+    pts.forEach((p, i) => {
+      const prev = pts[i - 1];
+      const next = pts[i + 1];
+      if (!prev || !next) {
+        p.handleIn = { x: 0, y: 0 };
+        p.handleOut = { x: 0, y: 0 };
+        return;
+      }
+      const dx = next.x - prev.x;
+      const dy = next.y - prev.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const strength = len * 0.25;
+      p.handleOut = { x: (dx / len) * strength, y: (dy / len) * strength };
+      p.handleIn = { x: -(dx / len) * strength, y: -(dy / len) * strength };
+    });
   }
 
   function setCanvasTransform(c, scale, widthPx, heightPx) {
@@ -247,54 +267,15 @@
     updateSelectedUI();
   }
 
-  function extrapolatedPoint(a, b) {
-    return { x: 2*a.x - b.x, y: 2*a.y - b.y, colour: a.colour };
-  }
-
-  function tj(ti, pi, pj, alpha = 0.0) {
-    const d = Math.hypot(pj.x - pi.x, pj.y - pi.y);
-    return ti + Math.pow(Math.max(d, 0.0001), alpha);
-  }
-
-  function splinePoint(p0, p1, p2, p3, t) {
-    const t0 = 0;
-    const t1 = tj(t0, p0, p1);
-    const t2 = tj(t1, p1, p2);
-    const t3 = tj(t2, p2, p3);
-
-    const tt = t1 + (t2 - t1) * t;
-
-    const A1 = {
-      x: ((t1 - tt)/(t1 - t0))*p0.x + ((tt - t0)/(t1 - t0))*p1.x,
-      y: ((t1 - tt)/(t1 - t0))*p0.y + ((tt - t0)/(t1 - t0))*p1.y
-    };
-    const A2 = {
-      x: ((t2 - tt)/(t2 - t1))*p1.x + ((tt - t1)/(t2 - t1))*p2.x,
-      y: ((t2 - tt)/(t2 - t1))*p1.y + ((tt - t1)/(t2 - t1))*p2.y
-    };
-    const A3 = {
-      x: ((t3 - tt)/(t3 - t2))*p2.x + ((tt - t2)/(t3 - t2))*p3.x,
-      y: ((t3 - tt)/(t3 - t2))*p2.y + ((tt - t2)/(t3 - t2))*p3.y
-    };
-
-    const B1 = {
-      x: ((t2 - tt)/(t2 - t0))*A1.x + ((tt - t0)/(t2 - t0))*A2.x,
-      y: ((t2 - tt)/(t2 - t0))*A1.y + ((tt - t0)/(t2 - t0))*A2.y
-    };
-    const B2 = {
-      x: ((t3 - tt)/(t3 - t1))*A2.x + ((tt - t1)/(t3 - t1))*A3.x,
-      y: ((t3 - tt)/(t3 - t1))*A2.y + ((tt - t1)/(t3 - t1))*A3.y
-    };
-
-    const C = {
-      x: ((t2 - tt)/(t2 - t1))*B1.x + ((tt - t1)/(t2 - t1))*B2.x,
-      y: ((t2 - tt)/(t2 - t1))*B1.y + ((tt - t1)/(t2 - t1))*B2.y
-    };
-
-    const soft = +controls.smoothness.value;
+  function cubicBezier(p0, c0, c1, p1, t) {
+    const mt = 1 - t;
+    const mt2 = mt * mt;
+    const mt3 = mt2 * mt;
+    const t2 = t * t;
+    const t3 = t2 * t;
     return {
-      x: p1.x + (C.x - p1.x) * soft + (1 - soft) * (p2.x - p1.x) * t,
-      y: p1.y + (C.y - p1.y) * soft + (1 - soft) * (p2.y - p1.y) * t
+      x: mt3*p0.x + 3*mt2*t*c0.x + 3*mt*t2*c1.x + t3*p1.x,
+      y: mt3*p0.y + 3*mt2*t*c0.y + 3*mt*t2*c1.y + t3*p1.y
     };
   }
 
@@ -310,13 +291,13 @@
     for (let i = 0; i < points.length - 1; i++) {
       const p1 = points[i];
       const p2 = points[i + 1];
-      const p0 = i === 0 ? extrapolatedPoint(p1, p2) : points[i - 1];
-      const p3 = i + 2 >= points.length ? extrapolatedPoint(p2, p1) : points[i + 2];
 
       for (let j = 0; j < samplesPerSegment; j++) {
-        const lt = j / samplesPerSegment;
-        const p = splinePoint(p0, p1, p2, p3, lt);
-        out.push({ ...p, t: (i + lt) / (points.length - 1) });
+        const t = j / samplesPerSegment;
+        const c0 = { x: p1.x + p1.handleOut.x, y: p1.y + p1.handleOut.y };
+        const c1 = { x: p2.x + p2.handleIn.x, y: p2.y + p2.handleIn.y };
+        const p = cubicBezier(p1, c0, c1, p2, t);
+        out.push({ ...p, t: (i + t) / (points.length - 1) });
       }
     }
     out.push({ ...points[points.length - 1], t: 1 });
@@ -478,6 +459,36 @@
       points.forEach((p, i) => {
         const active = i === selectedIndex;
         const hot = i === hovered;
+
+        if (active) {
+          targetCtx.lineWidth = 1.5;
+          targetCtx.strokeStyle = "rgba(94,84,232,.5)";
+          const c0 = { x: p.x + p.handleOut.x, y: p.y + p.handleOut.y };
+          const c1 = { x: p.x + p.handleIn.x, y: p.y + p.handleIn.y };
+          targetCtx.beginPath();
+          targetCtx.moveTo(p.x, p.y);
+          targetCtx.lineTo(c0.x, c0.y);
+          targetCtx.stroke();
+          targetCtx.beginPath();
+          targetCtx.moveTo(p.x, p.y);
+          targetCtx.lineTo(c1.x, c1.y);
+          targetCtx.stroke();
+
+          targetCtx.beginPath();
+          targetCtx.arc(c0.x, c0.y, 5, 0, Math.PI * 2);
+          targetCtx.fillStyle = "rgba(94,84,232,.6)";
+          targetCtx.fill();
+          targetCtx.strokeStyle = "#fff";
+          targetCtx.lineWidth = 1;
+          targetCtx.stroke();
+
+          targetCtx.beginPath();
+          targetCtx.arc(c1.x, c1.y, 5, 0, Math.PI * 2);
+          targetCtx.fillStyle = "rgba(94,84,232,.6)";
+          targetCtx.fill();
+          targetCtx.stroke();
+        }
+
         targetCtx.beginPath();
         targetCtx.arc(p.x, p.y, active ? 12 : hot ? 10 : 9, 0, Math.PI * 2);
         targetCtx.fillStyle = p.colour;
@@ -522,6 +533,18 @@
     return best;
   }
 
+  function nearestHandle(pos, threshold = 10) {
+    if (selectedIndex === null) return null;
+    const p = points[selectedIndex];
+    const c0 = { x: p.x + p.handleOut.x, y: p.y + p.handleOut.y };
+    const c1 = { x: p.x + p.handleIn.x, y: p.y + p.handleIn.y };
+    const d0 = Math.hypot(c0.x - pos.x, c0.y - pos.y);
+    const d1 = Math.hypot(c1.x - pos.x, c1.y - pos.y);
+    if (d0 < d1 && d0 < threshold) return { point: selectedIndex, handle: "out" };
+    if (d1 < threshold) return { point: selectedIndex, handle: "in" };
+    return null;
+  }
+
   function frame() {
     if (playing) time += 1 / 60;
     renderScene(ctx, innerWidth, innerHeight, canvas.width, canvas.height, dpr, true);
@@ -560,6 +583,12 @@
 
   canvas.addEventListener("pointerdown", e => {
     const pos = pointerPos(e);
+    const handleHit = nearestHandle(pos);
+    if (handleHit) {
+      draggingHandle = handleHit;
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     const hit = nearestPoint(pos);
     if (hit !== null && e.altKey && points.length > 2) {
       points.splice(hit, 1);
@@ -578,7 +607,13 @@
   canvas.addEventListener("pointermove", e => {
     const pos = pointerPos(e);
     hovered = nearestPoint(pos);
-    if (dragging !== null) {
+    if (draggingHandle) {
+      const p = points[draggingHandle.point];
+      const handle = draggingHandle.handle;
+      const dx = pos.x - p.x;
+      const dy = pos.y - p.y;
+      p[`handle${handle.charAt(0).toUpperCase() + handle.slice(1)}`] = { x: dx, y: dy };
+    } else if (dragging !== null) {
       points[dragging].x = pos.x;
       points[dragging].y = pos.y;
     }
@@ -586,6 +621,7 @@
 
   canvas.addEventListener("pointerup", e => {
     dragging = null;
+    draggingHandle = null;
     try { canvas.releasePointerCapture(e.pointerId); } catch {}
   });
 
@@ -606,7 +642,8 @@
       }
     }
     const refColour = points[insertAt + 1] ? points[insertAt + 1].colour : palette[palette.length - 1];
-    points.splice(insertAt + 1, 0, { x: pos.x, y: pos.y, colour: refColour });
+    points.splice(insertAt + 1, 0, { x: pos.x, y: pos.y, colour: refColour, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } });
+    autoHandles(points);
     selectedIndex = insertAt + 1;
     updateSelectedUI();
   });
@@ -619,6 +656,7 @@
   controls.bgColour.addEventListener("input", updateBackgroundUI);
   document.getElementById("reset").addEventListener("click", () => {
     points = defaultPoints();
+    autoHandles(points);
     selectedIndex = 0;
     time = 0;
     updateSelectedUI();
@@ -635,12 +673,14 @@
   addEventListener("resize", () => {
     resizeMain();
     points = defaultPoints();
+    autoHandles(points);
     selectedIndex = clamp(selectedIndex, 0, points.length - 1);
     updateSelectedUI();
   });
 
   resizeMain();
   points = defaultPoints();
+  autoHandles(points);
   updateLabels();
   updateSelectedUI();
   updateBackgroundUI();
