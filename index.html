@@ -708,7 +708,6 @@
   document.getElementById("randomise").addEventListener("click", randomiseAnimation);
   document.getElementById("applyPalette").addEventListener("click", applyPaletteToPoints);
   document.getElementById("save").addEventListener("click", exportPNG);
-  togglePanelBtn.addEventListener("click", togglePanel);
   Object.values(controls).forEach(input => input.addEventListener("input", updateLabels));
 
   addEventListener("resize", () => {
