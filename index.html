@@ -19,26 +19,27 @@
     font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink)
   }
   canvas{display:block;width:100vw;height:100vh;cursor:crosshair}
+  .sidebar{
+    position:fixed;top:0;left:0;height:100vh;width:360px;z-index:20;
+    background:var(--panel);backdrop-filter:blur(14px);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;overflow:hidden;
+    transition:transform .22s ease;
+  }
+  .sidebar.hidden{transform:translateX(-100%)}
+  .sidebar-header{
+    display:flex;align-items:center;justify-content:space-between;padding:14px;
+    border-bottom:1px solid var(--line);
+  }
+  .sidebar-header h2{margin:0;font-size:16px;font-weight:600}
+  .toggle-menu{
+    appearance:none;background:transparent;border:none;cursor:pointer;font-size:20px;
+    padding:0;color:var(--ink);width:32px;height:32px;display:flex;align-items:center;
+    justify-content:center;
+  }
+  .toggle-menu:hover{background:rgba(0,0,0,.05);border-radius:6px}
   .panel{
-    position:fixed;top:16px;left:16px;width:360px;max-height:calc(100vh - 32px);
-    overflow:auto;background:var(--panel);backdrop-filter:blur(14px);
-    border:1px solid var(--line);border-radius:16px;padding:14px;
-    box-shadow:0 12px 30px rgba(0,0,0,.08);
-    transition:transform .22s ease,opacity .22s ease;
-    z-index:20;
+    overflow:auto;padding:14px;flex:1;
   }
-  .panel.hidden{
-    transform:translateX(calc(-100% - 28px));
-    opacity:0;
-    pointer-events:none;
-  }
-  .toggle{
-    position:fixed;top:16px;left:16px;z-index:21;
-    appearance:none;background:rgba(255,255,255,.94);border:1px solid var(--line);
-    border-radius:999px;padding:10px 14px;font-size:12px;cursor:pointer;
-    box-shadow:0 8px 24px rgba(0,0,0,.08)
-  }
-  .toggle.shifted{left:392px}
   h1{margin:0 0 4px;font-size:15px}
   p{margin:0 0 12px;font-size:12px;line-height:1.35;color:var(--muted)}
   .row{display:grid;grid-template-columns:118px 1fr 54px;gap:8px;align-items:center;margin:9px 0;font-size:12px}
@@ -59,17 +60,22 @@
   }
   .dot{width:14px;height:14px;border-radius:50%;display:inline-block;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.16);vertical-align:middle;margin-right:8px}
   .hint{
-    position:fixed;right:16px;bottom:16px;max-width:420px;background:rgba(255,255,255,.78);
-    backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:14px;
-    padding:10px 12px;font-size:12px;line-height:1.35;color:var(--muted);z-index:10
+    padding:12px 0;margin-top:auto;border-top:1px solid var(--line);font-size:12px;
+    line-height:1.5;color:var(--muted);padding-top:14px;padding-left:14px;padding-right:14px;
   }
+  .hint strong{color:var(--ink);font-weight:600}
 </style>
 </head>
 <body>
 <canvas id="canvas"></canvas>
-<button id="togglePanel" class="toggle shifted">Hide controls</button>
 
-<section id="panel" class="panel">
+<nav class="sidebar">
+  <div class="sidebar-header">
+    <h2>Wave Path Visualiser</h2>
+    <button id="togglePanel" class="toggle-menu" title="Toggle panel">≡</button>
+  </div>
+
+  <section id="panel" class="panel">
   <h1>Wave Path Visualiser</h1>
   <p>Smoother spline, hidable controls, fixed gradient colours, animated wave motion, background colour control, and high-resolution PNG export.</p>
 
@@ -114,21 +120,23 @@
   <div class="buttons">
     <button id="reset" class="btn">Reset</button>
     <button id="pause" class="btn">Pause</button>
+    <button id="randomise" class="btn">Randomise</button>
     <button id="applyPalette" class="btn">Reapply palette</button>
     <button id="save" class="btn">Save hi-res PNG</button>
   </div>
-</section>
 
-<div class="hint">
-  Click a point to select it. Double-click to add a point. Alt-click to delete. Drag the blue handles to adjust curve angles. Recolour in the panel or with swatches.
-</div>
+  <div class="hint">
+    <strong>How to use:</strong> Click a point to select it. Double-click to add a point. Alt-click to delete. Drag the blue handles to adjust curve angles. Recolour with the swatches.
+  </div>
+</section>
+</nav>
 
 <script>
 (() => {
   const canvas = document.getElementById("canvas");
   const ctx = canvas.getContext("2d", { alpha: false });
 
-  const panel = document.getElementById("panel");
+  const sidebar = document.querySelector(".sidebar");
   const togglePanelBtn = document.getElementById("togglePanel");
 
   const controls = {
@@ -547,7 +555,8 @@
 
   function frame() {
     if (playing) time += 1 / 60;
-    renderScene(ctx, innerWidth, innerHeight, canvas.width, canvas.height, dpr, true);
+    const showAnchors = !sidebar.classList.contains("hidden");
+    renderScene(ctx, innerWidth, innerHeight, canvas.width, canvas.height, dpr, showAnchors);
     requestAnimationFrame(frame);
   }
 
@@ -575,10 +584,21 @@
   }
 
   function togglePanel() {
-    panelHidden = !panelHidden;
-    panel.classList.toggle("hidden", panelHidden);
-    togglePanelBtn.classList.toggle("shifted", !panelHidden);
-    togglePanelBtn.textContent = panelHidden ? "Show controls" : "Hide controls";
+    sidebar.classList.toggle("hidden");
+  }
+
+  function randomiseAnimation() {
+    points.forEach(p => {
+      p.handleIn.x += (Math.random() - 0.5) * 40;
+      p.handleIn.y += (Math.random() - 0.5) * 40;
+      p.handleOut.x += (Math.random() - 0.5) * 40;
+      p.handleOut.y += (Math.random() - 0.5) * 40;
+    });
+    controls.amplitude.value = Math.random() * 80 + 10;
+    controls.frequency.value = Math.random() * 2 + 0.8;
+    controls.speed.value = Math.random() * 2 + 0.5;
+    controls.grain.value = Math.random() * 0.6 + 0.3;
+    updateLabels();
   }
 
   canvas.addEventListener("pointerdown", e => {
@@ -665,6 +685,7 @@
     playing = !playing;
     e.currentTarget.textContent = playing ? "Pause" : "Play";
   });
+  document.getElementById("randomise").addEventListener("click", randomiseAnimation);
   document.getElementById("applyPalette").addEventListener("click", applyPaletteToPoints);
   document.getElementById("save").addEventListener("click", exportPNG);
   togglePanelBtn.addEventListener("click", togglePanel);
