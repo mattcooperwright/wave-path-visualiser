@@ -474,7 +474,7 @@
     targetCtx.drawImage(grain, 0, 0, viewW, viewH);
     targetCtx.restore();
 
-    if (showAnchors && +controls.showUI.value === 1) {
+    if (showAnchors) {
       targetCtx.save();
       const preview = sampleSpline(24);
       targetCtx.lineWidth = 1;
