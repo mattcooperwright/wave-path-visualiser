@@ -654,7 +654,6 @@
       const dy = pos.y - p.y;
       p[`handle${handle.charAt(0).toUpperCase() + handle.slice(1)}`] = { x: dx, y: dy };
     } else if (dragging !== null) {
-      points[dragging].x = pos.x;
       points[dragging].y = pos.y;
     }
   });
