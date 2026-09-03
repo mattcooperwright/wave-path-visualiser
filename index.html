@@ -32,14 +32,17 @@
   .topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
   .version{opacity:.6}
 
-  /* Sidebar */
+  /* Sidebar - Floating Panel */
   .sidebar{
-    position:fixed;top:56px;left:0;bottom:0;width:360px;z-index:20;
-    background:var(--panel);backdrop-filter:blur(14px);border-right:1px solid var(--line);
+    position:fixed;top:72px;right:16px;width:340px;max-height:calc(100vh - 104px);z-index:20;
+    background:var(--panel);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:14px;
     display:flex;flex-direction:column;overflow:hidden;
-    transition:transform .22s ease;
+    transition:opacity .22s ease, transform .22s ease;
+    box-shadow:0 12px 30px rgba(0,0,0,.15);
+    cursor:move;user-select:none;
   }
-  .sidebar.hidden{transform:translateX(-100%)}
+  .sidebar.hidden{opacity:0;pointer-events:none;transform:scale(.95)}
+  .panel{overflow:auto;padding:14px;flex:1;cursor:auto}
   .panel{
     overflow:auto;padding:14px;flex:1;
   }
@@ -160,6 +163,28 @@
     sidebar.classList.toggle("hidden");
   });
 
+  let draggingPanel = false;
+  let panelOffset = { x: 0, y: 0 };
+
+  sidebar.addEventListener("mousedown", (e) => {
+    if (e.target.closest(".panel, input, button, select")) return;
+    draggingPanel = true;
+    const rect = sidebar.getBoundingClientRect();
+    panelOffset.x = e.clientX - rect.left;
+    panelOffset.y = e.clientY - rect.top;
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!draggingPanel) return;
+    sidebar.style.right = "auto";
+    sidebar.style.left = (e.clientX - panelOffset.x) + "px";
+    sidebar.style.top = (e.clientY - panelOffset.y) + "px";
+  });
+
+  document.addEventListener("mouseup", () => {
+    draggingPanel = false;
+  });
+
   const controls = {
     width: document.getElementById("width"),
     smoothness: document.getElementById("smoothness"),
@@ -185,7 +210,7 @@
     exportScale: document.getElementById("exportScaleVal")
   };
 
-  const palette = ["#d6c541","#e6af39","#ef5a2b","#e43870","#5b20b7","#2f4ca7","#68a733"];
+  const palette = ["#FF601B","#FF2F4E","#FF017A","#9403AC","#5220A7","#0C3FA3"];
 
   let dpr = 1;
   let points = [];
