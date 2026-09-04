@@ -34,15 +34,22 @@
 
   /* Sidebar - Floating Panel */
   .sidebar{
-    position:fixed;top:72px;right:16px;width:340px;max-height:calc(100vh - 104px);z-index:20;
+    position:fixed;top:72px;right:16px;width:340px;max-height:calc(100vh - 104px);z-index:15;
     background:var(--panel);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:14px;
     display:flex;flex-direction:column;overflow:hidden;
     transition:opacity .22s ease, transform .22s ease;
     box-shadow:0 12px 30px rgba(0,0,0,.15);
-    cursor:move;user-select:none;
+    user-select:none;
   }
   .sidebar.hidden{opacity:0;pointer-events:none;transform:scale(.95)}
-  .panel{overflow:auto;padding:14px;flex:1;cursor:auto}
+  .sidebar-handle{
+    padding:10px 14px;border-bottom:1px solid var(--line);cursor:grab;user-select:none;
+    display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);font-weight:600;
+    text-transform:uppercase;letter-spacing:.5px;
+  }
+  .sidebar-handle:active{cursor:grabbing}
+  .drag-dots{font-size:16px;letter-spacing:-2px}
+  .panel{overflow:auto;padding:14px;flex:1;cursor:auto;pointer-events:all}
   .panel{
     overflow:auto;padding:14px;flex:1;
   }
@@ -88,13 +95,17 @@
     <h1 class="topbar-title">Wave Visualiser</h1>
   </div>
   <div class="topbar-right">
-    <span class="version">v1.0.11</span>
+    <span class="version">v1.0.12</span>
   </div>
 </header>
 
 <canvas id="canvas"></canvas>
 
 <nav class="sidebar hidden">
+  <div class="sidebar-handle">
+    <span class="drag-dots">⋮⋮</span>
+    <span>Edit Settings</span>
+  </div>
   <section id="panel" class="panel">
   <h1>Wave Path Visualiser</h1>
   <p>Smoother spline, hidable controls, fixed gradient colours, animated wave motion, background colour control, and high-resolution PNG export.</p>
@@ -165,9 +176,9 @@
 
   let draggingPanel = false;
   let panelOffset = { x: 0, y: 0 };
+  const dragHandle = document.querySelector(".sidebar-handle");
 
-  sidebar.addEventListener("mousedown", (e) => {
-    if (e.target.closest(".panel, input, button, select")) return;
+  dragHandle.addEventListener("mousedown", (e) => {
     draggingPanel = true;
     const rect = sidebar.getBoundingClientRect();
     panelOffset.x = e.clientX - rect.left;
@@ -177,8 +188,8 @@
   document.addEventListener("mousemove", (e) => {
     if (!draggingPanel) return;
     sidebar.style.right = "auto";
-    sidebar.style.left = (e.clientX - panelOffset.x) + "px";
-    sidebar.style.top = (e.clientY - panelOffset.y) + "px";
+    sidebar.style.top = Math.max(56, e.clientY - panelOffset.y) + "px";
+    sidebar.style.left = Math.max(0, e.clientX - panelOffset.x) + "px";
   });
 
   document.addEventListener("mouseup", () => {
@@ -225,13 +236,13 @@
   function defaultPoints() {
     const w = innerWidth, h = innerHeight;
     const pts = [
-      { x: w*0.03, y: h*0.55, colour: "#d6c541" },
-      { x: w*0.14, y: h*0.72, colour: "#e6af39" },
-      { x: w*0.30, y: h*0.26, colour: "#ef5a2b" },
-      { x: w*0.47, y: h*0.72, colour: "#e43870" },
-      { x: w*0.63, y: h*0.40, colour: "#5b20b7" },
-      { x: w*0.80, y: h*0.72, colour: "#2f4ca7" },
-      { x: w*0.96, y: h*0.55, colour: "#68a733" }
+      { x: w*0.03, y: h*0.55, colour: palette[0] },
+      { x: w*0.14, y: h*0.72, colour: palette[1] },
+      { x: w*0.30, y: h*0.26, colour: palette[2] },
+      { x: w*0.47, y: h*0.72, colour: palette[2] },
+      { x: w*0.63, y: h*0.40, colour: palette[3] },
+      { x: w*0.80, y: h*0.72, colour: palette[4] },
+      { x: w*0.96, y: h*0.55, colour: palette[5] }
     ];
     return pts.map((p, i) => ({ ...p, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } }));
   }
@@ -383,12 +394,26 @@
 
   function colourAt(t) {
     t = clamp(t, 0, 1);
-    const scaled = t * (points.length - 1);
-    const i = Math.floor(scaled);
-    const frac = scaled - i;
-    const a = points[clamp(i, 0, points.length - 1)];
-    const b = points[clamp(i + 1, 0, points.length - 1)];
-    return mixColours(a.colour, b.colour, frac);
+    const leftPalette = [palette[0], palette[1], palette[2]];
+    const rightPalette = [palette[3], palette[4], palette[5]];
+
+    if (t < 0.5) {
+      const localT = t / 0.5;
+      const scaled = localT * (leftPalette.length - 1);
+      const i = Math.floor(scaled);
+      const frac = scaled - i;
+      const a = leftPalette[clamp(i, 0, leftPalette.length - 1)];
+      const b = leftPalette[clamp(i + 1, 0, leftPalette.length - 1)];
+      return mixColours(a, b, frac);
+    } else {
+      const localT = (t - 0.5) / 0.5;
+      const scaled = localT * (rightPalette.length - 1);
+      const i = Math.floor(scaled);
+      const frac = scaled - i;
+      const a = rightPalette[clamp(i, 0, rightPalette.length - 1)];
+      const b = rightPalette[clamp(i + 1, 0, rightPalette.length - 1)];
+      return mixColours(a, b, frac);
+    }
   }
 
   function drawBackground(targetCtx, viewW, viewH, noiseDensity = 0.00055) {
