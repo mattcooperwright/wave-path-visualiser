@@ -396,23 +396,30 @@
     t = clamp(t, 0, 1);
     const leftPalette = [palette[0], palette[1], palette[2]];
     const rightPalette = [palette[3], palette[4], palette[5]];
+    const transitionStart = 0.42;
+    const transitionEnd = 0.58;
 
-    if (t < 0.5) {
-      const localT = t / 0.5;
+    if (t < transitionStart) {
+      const localT = t / transitionStart;
       const scaled = localT * (leftPalette.length - 1);
       const i = Math.floor(scaled);
       const frac = scaled - i;
       const a = leftPalette[clamp(i, 0, leftPalette.length - 1)];
       const b = leftPalette[clamp(i + 1, 0, leftPalette.length - 1)];
       return mixColours(a, b, frac);
-    } else {
-      const localT = (t - 0.5) / 0.5;
+    } else if (t > transitionEnd) {
+      const localT = (t - transitionEnd) / (1 - transitionEnd);
       const scaled = localT * (rightPalette.length - 1);
       const i = Math.floor(scaled);
       const frac = scaled - i;
       const a = rightPalette[clamp(i, 0, rightPalette.length - 1)];
       const b = rightPalette[clamp(i + 1, 0, rightPalette.length - 1)];
       return mixColours(a, b, frac);
+    } else {
+      const blendT = (t - transitionStart) / (transitionEnd - transitionStart);
+      const leftColour = leftPalette[2];
+      const rightColour = rightPalette[0];
+      return mixColours(leftColour, rightColour, blendT);
     }
   }
 
