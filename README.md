@@ -24,6 +24,17 @@ An interactive animation tool for creating flowing, gradient-coloured line anima
 7. **Hide controls** — click "Hide controls" to see the animation fullscreen
 8. **Export** — adjust PNG scale and click "Save hi-res PNG"
 
+## Transparent Video Export (`/video`)
+
+`video.html` is a separate version of the tool for motion work. It draws the wave on a fixed-size artboard (HD, 4K, square, 4:5 or vertical) with no background, and exports:
+
+- **ProRes 4444 `.mov` with alpha**, for After Effects, Premiere, Final Cut, DaVinci Resolve and Keynote. Encoding runs in the browser with [ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm). The first export downloads a 31 MB encoder from jsDelivr, which the browser then caches.
+- **PNG sequence `.zip` with alpha**, a lossless fallback that imports into any editor as an image sequence.
+
+Frames are rendered one by one at the chosen frame rate rather than screen-recorded, so the output is smooth on any machine. "Seamless loop" sets the length to a whole number of motion cycles, so the clip loops without a jump.
+
+MP4 (H.264) cannot store transparency, which is why the export uses ProRes. Long 4K exports can run out of browser memory; use a shorter length or the PNG sequence if that happens.
+
 ## Running Locally
 
 ```bash

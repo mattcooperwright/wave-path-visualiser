@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Wave Path Visualiser (video) — animate the gradient wave and export it as a transparent ProRes 4444 video or PNG sequence for motion editing.">
+<title>Wave Video Exporter</title>
+<style>
+  :root{
+    --bg:#2a2a2e;
+    --panel:rgba(255,255,255,.92);
+    --line:rgba(0,0,0,.12);
+    --ink:#202020;
+    --muted:#666;
+    --accent:#5e54e8;
+  }
+  html,body{
+    margin:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink)
+  }
+
+  /* Stage: the composition is drawn as an artboard, fitted inside this area */
+  .stage{position:fixed;top:56px;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center}
+  canvas{display:block;cursor:crosshair;box-shadow:0 0 0 1px rgba(255,255,255,.12),0 20px 50px rgba(0,0,0,.35)}
+  canvas.bg-checker{
+    background-color:#fff;
+    background-image:
+      linear-gradient(45deg,#d9d9d9 25%,transparent 25%,transparent 75%,#d9d9d9 75%),
+      linear-gradient(45deg,#d9d9d9 25%,transparent 25%,transparent 75%,#d9d9d9 75%);
+    background-size:20px 20px;background-position:0 0,10px 10px;
+  }
+  canvas.bg-light{background:#efede8}
+  canvas.bg-dark{background:#111}
+  canvas.bg-green{background:#00b140}
+
+  /* Top Bar */
+  .topbar{
+    position:fixed;top:0;left:0;right:0;height:56px;background:var(--panel);
+    border-bottom:1px solid var(--line);backdrop-filter:blur(14px);z-index:30;
+    display:flex;align-items:center;justify-content:flex-start;padding:0 16px;
+    gap:16px;
+  }
+  .topbar-left{display:flex;align-items:center;gap:12px}
+  .topbar-title{margin:0;font-size:16px;font-weight:600;color:var(--ink)}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px}
+  .topbar-right a{color:var(--muted)}
+  .version{opacity:.6}
+
+  /* Sidebar - Floating Panel */
+  .sidebar{
+    position:fixed;top:72px;right:16px;width:340px;max-height:calc(100vh - 104px);z-index:15;
+    background:var(--panel);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:14px;
+    display:flex;flex-direction:column;overflow:hidden;
+    transition:opacity .22s ease, transform .22s ease;
+    box-shadow:0 12px 30px rgba(0,0,0,.15);
+    user-select:none;
+  }
+  .sidebar.hidden{opacity:0;pointer-events:none;transform:scale(.95)}
+  .sidebar.hidden .panel{pointer-events:none}
+  .sidebar-handle{
+    padding:10px 14px;border-bottom:1px solid var(--line);cursor:grab;user-select:none;
+    display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);font-weight:600;
+    text-transform:uppercase;letter-spacing:.5px;
+  }
+  .sidebar-handle:active{cursor:grabbing}
+  .drag-dots{font-size:16px;letter-spacing:-2px}
+  .panel{overflow:auto;padding:14px;flex:1;cursor:auto;pointer-events:all}
+
+  .settings-btn{
+    appearance:none;background:transparent;border:none;cursor:pointer;font-size:28px;
+    padding:6px;color:var(--ink);width:44px;height:44px;display:flex;align-items:center;
+    justify-content:center;border-radius:8px;transition:all .2s;
+  }
+  .settings-btn:hover{background:rgba(0,0,0,.06)}
+  h1{margin:0 0 4px;font-size:15px}
+  p{margin:0 0 12px;font-size:12px;line-height:1.35;color:var(--muted)}
+  .row{display:grid;grid-template-columns:118px 1fr 54px;gap:8px;align-items:center;margin:9px 0;font-size:12px}
+  .row input[type=range]{width:100%}
+  .row select{grid-column:2 / 4;font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .value{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+  .subhead{margin-top:12px;margin-bottom:4px;font-size:11px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.05em}
+  .buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  button.btn{
+    appearance:none;background:#fff;border:1px solid var(--line);border-radius:10px;
+    padding:8px 10px;font-size:12px;cursor:pointer;color:var(--ink)
+  }
+  button.btn:hover{background:#f6f6f6}
+  button.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.btn.primary:hover{background:#4f45d6}
+  .swatches{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .swatch{width:24px;height:24px;border-radius:999px;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.16);cursor:pointer;padding:0}
+  .selected-info{
+    display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.03);
+    border:1px solid rgba(0,0,0,.06);border-radius:10px;padding:8px 10px;font-size:12px;margin-top:6px
+  }
+  .dot{width:14px;height:14px;border-radius:50%;display:inline-block;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.16);vertical-align:middle;margin-right:8px}
+  .summary{font-size:12px;color:var(--muted);margin:6px 0 0;font-variant-numeric:tabular-nums}
+  .hint{
+    margin-top:auto;border-top:1px solid var(--line);font-size:12px;
+    line-height:1.5;color:var(--muted);padding:14px;
+  }
+  .hint strong{color:var(--ink);font-weight:600}
+
+  /* Export progress */
+  .overlay{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px}
+  .overlay.open{display:flex}
+  .dialog{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:380px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+  .dialog h2{margin:0 0 6px;font-size:15px}
+  .dialog p{margin:0 0 14px}
+  .bar{height:8px;border-radius:999px;background:rgba(0,0,0,.08);overflow:hidden}
+  .bar > div{height:100%;width:0;background:var(--accent);transition:width .15s}
+  .dialog .buttons{justify-content:flex-end}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-left">
+    <button id="togglePanel" class="settings-btn" title="Settings">⚙</button>
+    <h1 class="topbar-title">Wave Video Exporter</h1>
+  </div>
+  <div class="topbar-right">
+    <a href="/">Still image version</a>
+    <span class="version">v1.0.0</span>
+  </div>
+</header>
+
+<div class="stage"><canvas id="canvas" class="bg-checker"></canvas></div>
+
+<nav class="sidebar">
+  <div class="sidebar-handle">
+    <span class="drag-dots">⋮⋮</span>
+    <span>Edit Settings</span>
+  </div>
+  <section id="panel" class="panel">
+  <h1>Wave Video Exporter</h1>
+  <p>Animate the wave and export it with a transparent background as ProRes 4444 or a PNG sequence.</p>
+
+  <div class="subhead">Composition</div>
+  <div class="row"><label>Size</label>
+    <select id="compSize">
+      <option value="1920x1080" selected>1920 × 1080 (HD)</option>
+      <option value="1280x720">1280 × 720</option>
+      <option value="3840x2160">3840 × 2160 (4K, slow)</option>
+      <option value="1080x1080">1080 × 1080 (square)</option>
+      <option value="1080x1350">1080 × 1350 (4:5)</option>
+      <option value="1080x1920">1080 × 1920 (vertical)</option>
+    </select>
+  </div>
+  <div class="row"><label>Frame rate</label>
+    <select id="fps">
+      <option value="24">24 fps</option>
+      <option value="25">25 fps</option>
+      <option value="30" selected>30 fps</option>
+      <option value="50">50 fps</option>
+      <option value="60">60 fps</option>
+    </select>
+  </div>
+  <div class="row"><label>Preview behind</label>
+    <select id="previewBg">
+      <option value="checker" selected>Checkerboard</option>
+      <option value="light">Light paper</option>
+      <option value="dark">Dark</option>
+      <option value="green">Green</option>
+    </select>
+  </div>
+
+  <div class="subhead">Shape</div>
+  <div class="row"><label>Tube width</label><input id="width" type="range" min="50" max="240" value="120"><div id="widthVal" class="value"></div></div>
+  <div class="row"><label>Smoothness</label><input id="smoothness" type="range" min="0.20" max="1.00" step="0.01" value="0.92"><div id="smoothnessVal" class="value"></div></div>
+
+  <div class="subhead">Texture</div>
+  <div class="row"><label>Grain amount</label><input id="grain" type="range" min="0" max="1" step="0.01" value="0.55"><div id="grainVal" class="value"></div></div>
+  <div class="row"><label>Grain scale</label><input id="grainScale" type="range" min="0.6" max="3.5" step="0.1" value="1.4"><div id="grainScaleVal" class="value"></div></div>
+
+  <div class="subhead">Motion</div>
+  <div class="row"><label>Wave amplitude</label><input id="amplitude" type="range" min="0" max="90" step="1" value="22"><div id="amplitudeVal" class="value"></div></div>
+  <div class="row"><label>Wave speed</label><input id="speed" type="range" min="0" max="4" step="0.01" value="1.15"><div id="speedVal" class="value"></div></div>
+  <div class="row"><label>Wave frequency</label><input id="frequency" type="range" min="0.2" max="4.0" step="0.01" value="1.85"><div id="frequencyVal" class="value"></div></div>
+
+  <div class="subhead">Colours</div>
+  <div class="selected-info">
+    <div><span id="selectedDot" class="dot" style="background:#d6c541"></span><span id="selectedLabel">Selected point: 1</span></div>
+    <input id="customColour" type="color" value="#d6c541" title="Selected point colour">
+  </div>
+  <div class="swatches">
+    <button class="swatch" data-colour="#d6c541" style="background:#d6c541" title="Gold"></button>
+    <button class="swatch" data-colour="#e6af39" style="background:#e6af39" title="Warm gold"></button>
+    <button class="swatch" data-colour="#ef5a2b" style="background:#ef5a2b" title="Orange"></button>
+    <button class="swatch" data-colour="#e43870" style="background:#e43870" title="Pink"></button>
+    <button class="swatch" data-colour="#5b20b7" style="background:#5b20b7" title="Purple"></button>
+    <button class="swatch" data-colour="#2f4ca7" style="background:#2f4ca7" title="Blue"></button>
+    <button class="swatch" data-colour="#68a733" style="background:#68a733" title="Green"></button>
+  </div>
+
+  <div class="subhead">Export</div>
+  <div class="row"><label>Format</label>
+    <select id="format">
+      <option value="prores" selected>ProRes 4444 .mov (alpha)</option>
+      <option value="png">PNG sequence .zip (alpha)</option>
+    </select>
+  </div>
+  <div class="row"><label>Length</label>
+    <select id="lengthMode">
+      <option value="loop" selected>Seamless loop</option>
+      <option value="seconds">Fixed seconds</option>
+    </select>
+  </div>
+  <div class="row" id="loopsRow"><label>Loop cycles</label><input id="loops" type="range" min="1" max="8" step="1" value="2"><div id="loopsVal" class="value"></div></div>
+  <div class="row" id="secondsRow" hidden><label>Seconds</label><input id="seconds" type="range" min="1" max="30" step="1" value="6"><div id="secondsVal" class="value"></div></div>
+  <div id="exportSummary" class="summary"></div>
+
+  <div class="buttons">
+    <button id="reset" class="btn">Reset</button>
+    <button id="pause" class="btn">Pause</button>
+    <button id="applyPalette" class="btn">Reapply palette</button>
+    <button id="exportVideo" class="btn primary">Export video</button>
+  </div>
+
+  <div class="hint">
+    <strong>How to use:</strong> Drag a point up or down to reshape the wave. Double-click to add a point, Alt-click to delete one. Drag the blue handles to adjust curve angles. The first ProRes export downloads a 31 MB encoder, which your browser then caches.
+  </div>
+</section>
+</nav>
+
+<div id="overlay" class="overlay">
+  <div class="dialog">
+    <h2 id="progressTitle">Exporting…</h2>
+    <p id="progressText">Preparing</p>
+    <div class="bar"><div id="progressBar"></div></div>
+    <div class="buttons"><button id="cancelExport" class="btn">Cancel</button></div>
+  </div>
+</div>
+
+<script type="module">
+  const FFMPEG_CORE = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core";
+
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+  const sidebar = document.querySelector(".sidebar");
+
+  document.getElementById("togglePanel").addEventListener("click", () => {
+    sidebar.classList.toggle("hidden");
+  });
+
+  let draggingPanel = false;
+  const panelOffset = { x: 0, y: 0 };
+  const dragHandle = document.querySelector(".sidebar-handle");
+  dragHandle.addEventListener("mousedown", e => {
+    draggingPanel = true;
+    const rect = sidebar.getBoundingClientRect();
+    panelOffset.x = e.clientX - rect.left;
+    panelOffset.y = e.clientY - rect.top;
+  });
+  document.addEventListener("mousemove", e => {
+    if (!draggingPanel) return;
+    sidebar.style.right = "auto";
+    sidebar.style.top = Math.max(56, e.clientY - panelOffset.y) + "px";
+    sidebar.style.left = Math.max(0, e.clientX - panelOffset.x) + "px";
+  });
+  document.addEventListener("mouseup", () => { draggingPanel = false; });
+
+  const controls = {
+    width: document.getElementById("width"),
+    smoothness: document.getElementById("smoothness"),
+    grain: document.getElementById("grain"),
+    grainScale: document.getElementById("grainScale"),
+    amplitude: document.getElementById("amplitude"),
+    speed: document.getElementById("speed"),
+    frequency: document.getElementById("frequency"),
+    loops: document.getElementById("loops"),
+    seconds: document.getElementById("seconds"),
+    compSize: document.getElementById("compSize"),
+    fps: document.getElementById("fps"),
+    lengthMode: document.getElementById("lengthMode"),
+    format: document.getElementById("format"),
+    previewBg: document.getElementById("previewBg")
+  };
+
+  const values = {
+    width: document.getElementById("widthVal"),
+    smoothness: document.getElementById("smoothnessVal"),
+    grain: document.getElementById("grainVal"),
+    grainScale: document.getElementById("grainScaleVal"),
+    amplitude: document.getElementById("amplitudeVal"),
+    speed: document.getElementById("speedVal"),
+    frequency: document.getElementById("frequencyVal"),
+    loops: document.getElementById("loopsVal"),
+    seconds: document.getElementById("secondsVal")
+  };
+
+  const palette = ["#FF601B","#FF2F4E","#FF017A","#9403AC","#5220A7","#0C3FA3"];
+
+  // Composition size in output pixels. Points live in this coordinate space.
+  let comp = { w: 1920, h: 1080 };
+  let fit = 1;   // CSS pixels per composition pixel
+  let dpr = 1;
+  let points = [];
+  let selectedIndex = 0;
+  let dragging = null;
+  let draggingHandle = null;
+  let hovered = null;
+  let playing = true;
+  let time = 0;
+  let lastNow = null;
+  let exporting = false;
+
+  function defaultPoints() {
+    const w = comp.w, h = comp.h;
+    const pts = [
+      { x: w*0.03, y: h*0.55, colour: palette[0] },
+      { x: w*0.14, y: h*0.72, colour: palette[1] },
+      { x: w*0.30, y: h*0.26, colour: palette[2] },
+      { x: w*0.47, y: h*0.72, colour: palette[2] },
+      { x: w*0.63, y: h*0.40, colour: palette[3] },
+      { x: w*0.80, y: h*0.72, colour: palette[4] },
+      { x: w*0.96, y: h*0.55, colour: palette[5] }
+    ];
+    return pts.map(p => ({ ...p, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } }));
+  }
+
+  function autoHandles(pts) {
+    pts.forEach((p, i) => {
+      const prev = pts[i - 1];
+      const next = pts[i + 1];
+      if (!prev || !next) {
+        p.handleIn = { x: 0, y: 0 };
+        p.handleOut = { x: 0, y: 0 };
+        return;
+      }
+      const dx = next.x - prev.x;
+      const dy = next.y - prev.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const strength = len * 0.25;
+      p.handleOut = { x: (dx / len) * strength, y: (dy / len) * strength };
+      p.handleIn = { x: -(dx / len) * strength, y: -(dy / len) * strength };
+    });
+  }
+
+  function setCanvasTransform(c, scale, widthPx, heightPx) {
+    c.width = widthPx;
+    c.height = heightPx;
+    c.getContext("2d").setTransform(scale, 0, 0, scale, 0, 0);
+  }
+
+  // Fit the composition artboard inside the stage, leaving a margin
+  function resizeMain() {
+    dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
+    const stage = canvas.parentElement.getBoundingClientRect();
+    const margin = 32;
+    fit = Math.min((stage.width - margin * 2) / comp.w, (stage.height - margin * 2) / comp.h);
+    fit = Math.max(0.05, fit);
+    canvas.style.width = `${Math.round(comp.w * fit)}px`;
+    canvas.style.height = `${Math.round(comp.h * fit)}px`;
+    setCanvasTransform(canvas, fit * dpr, Math.round(comp.w * fit * dpr), Math.round(comp.h * fit * dpr));
+  }
+
+  function setComposition(w, h) {
+    const sx = w / comp.w, sy = h / comp.h;
+    points.forEach(p => {
+      p.x *= sx; p.y *= sy;
+      p.handleIn = { x: p.handleIn.x * sx, y: p.handleIn.y * sy };
+      p.handleOut = { x: p.handleOut.x * sx, y: p.handleOut.y * sy };
+    });
+    comp = { w, h };
+    resizeMain();
+    updateSummary();
+  }
+
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  function hexToRgb(hex) {
+    const s = hex.replace("#","");
+    const full = s.length === 3 ? s.split("").map(x => x + x).join("") : s;
+    const n = parseInt(full, 16);
+    return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+  }
+
+  function rgbCss(c, a=1) { return `rgba(${c.r|0},${c.g|0},${c.b|0},${a})`; }
+
+  function mixColours(a, b, t) {
+    const ca = hexToRgb(a), cb = hexToRgb(b);
+    return {
+      r: ca.r + (cb.r - ca.r) * t,
+      g: ca.g + (cb.g - ca.g) * t,
+      b: ca.b + (cb.b - ca.b) * t
+    };
+  }
+
+  function updateSelectedUI() {
+    const p = points[selectedIndex];
+    if (!p) return;
+    document.getElementById("selectedLabel").textContent = `Selected point: ${selectedIndex + 1}`;
+    document.getElementById("selectedDot").style.background = p.colour;
+    document.getElementById("customColour").value = p.colour;
+  }
+
+  function setSelectedColour(colour) {
+    if (!points[selectedIndex]) return;
+    points[selectedIndex].colour = colour;
+    updateSelectedUI();
+  }
+
+  function applyPaletteToPoints() {
+    points.forEach((p, i) => {
+      const t = i / Math.max(1, points.length - 1);
+      const scaled = t * (palette.length - 1);
+      const idx = Math.floor(scaled);
+      const frac = scaled - idx;
+      const c = mixColours(
+        palette[clamp(idx, 0, palette.length - 1)],
+        palette[clamp(idx + 1, 0, palette.length - 1)],
+        frac
+      );
+      const toHex = n => Math.round(n).toString(16).padStart(2, "0");
+      p.colour = `#${toHex(c.r)}${toHex(c.g)}${toHex(c.b)}`;
+    });
+    updateSelectedUI();
+  }
+
+  function cubicBezier(p0, c0, c1, p1, t) {
+    const mt = 1 - t;
+    const mt2 = mt * mt;
+    const mt3 = mt2 * mt;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return {
+      x: mt3*p0.x + 3*mt2*t*c0.x + 3*mt*t2*c1.x + t3*p1.x,
+      y: mt3*p0.y + 3*mt2*t*c0.y + 3*mt*t2*c1.y + t3*p1.y
+    };
+  }
+
+  function sampleSpline(samplesPerSegment = null) {
+    const out = [];
+    if (points.length < 2) return out;
+
+    if (samplesPerSegment === null) {
+      const smoothness = +controls.smoothness.value;
+      samplesPerSegment = Math.ceil(80 + smoothness * 40);
+    }
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+
+      for (let j = 0; j < samplesPerSegment; j++) {
+        const t = j / samplesPerSegment;
+        const c0 = { x: p1.x + p1.handleOut.x, y: p1.y + p1.handleOut.y };
+        const c1 = { x: p2.x + p2.handleIn.x, y: p2.y + p2.handleIn.y };
+        const p = cubicBezier(p1, c0, c1, p2, t);
+        out.push({ ...p, t: (i + t) / (points.length - 1) });
+      }
+    }
+    out.push({ ...points[points.length - 1], t: 1 });
+    return out;
+  }
+
+  // Phase advances by speed * 2.2 radians per second, so the motion repeats every 2π / (speed * 2.2) seconds
+  function loopPeriod() {
+    const speed = +controls.speed.value;
+    return speed > 0 ? (Math.PI * 2) / (speed * 2.2) : null;
+  }
+
+  function animateSamples(samples, atTime) {
+    const amp = +controls.amplitude.value;
+    const speed = +controls.speed.value;
+    const freq = +controls.frequency.value;
+    if (amp <= 0) return samples;
+
+    return samples.map((p, i) => {
+      const prev = samples[Math.max(0, i - 1)];
+      const next = samples[Math.min(samples.length - 1, i + 1)];
+      const tx = next.x - prev.x;
+      const ty = next.y - prev.y;
+      const len = Math.hypot(tx, ty) || 1;
+      const nx = -ty / len;
+      const ny = tx / len;
+
+      const phase = p.t * Math.PI * 2 * freq - atTime * speed * 2.2;
+      const envelope = 0.72 + 0.28 * Math.sin(p.t * Math.PI);
+      const offset = Math.sin(phase) * amp * envelope;
+
+      return { ...p, x: p.x + nx * offset, y: p.y + ny * offset };
+    });
+  }
+
+  function colourAt(t) {
+    t = clamp(t, 0, 1);
+    const leftPalette = [palette[0], palette[1], palette[2]];
+    const rightPalette = [palette[3], palette[4], palette[5]];
+    const transitionStart = 0.42;
+    const transitionEnd = 0.58;
+
+    if (t < transitionStart) {
+      const localT = t / transitionStart;
+      const scaled = localT * (leftPalette.length - 1);
+      const i = Math.floor(scaled);
+      const frac = scaled - i;
+      const a = leftPalette[clamp(i, 0, leftPalette.length - 1)];
+      const b = leftPalette[clamp(i + 1, 0, leftPalette.length - 1)];
+      return mixColours(a, b, frac);
+    } else if (t > transitionEnd) {
+      const localT = (t - transitionEnd) / (1 - transitionEnd);
+      const scaled = localT * (rightPalette.length - 1);
+      const i = Math.floor(scaled);
+      const frac = scaled - i;
+      const a = rightPalette[clamp(i, 0, rightPalette.length - 1)];
+      const b = rightPalette[clamp(i + 1, 0, rightPalette.length - 1)];
+      return mixColours(a, b, frac);
+    } else {
+      const blendT = (t - transitionStart) / (transitionEnd - transitionStart);
+      return mixColours(leftPalette[2], rightPalette[0], blendT);
+    }
+  }
+
+  function strokeRoundedPath(targetCtx, samples, width, style) {
+    targetCtx.save();
+    targetCtx.lineCap = "round";
+    targetCtx.lineJoin = "round";
+    targetCtx.lineWidth = width;
+    targetCtx.strokeStyle = style;
+    targetCtx.beginPath();
+    samples.forEach((p, i) => i ? targetCtx.lineTo(p.x, p.y) : targetCtx.moveTo(p.x, p.y));
+    targetCtx.stroke();
+    targetCtx.restore();
+  }
+
+  // Draws the wave on a transparent canvas. viewW/viewH are composition pixels,
+  // uiScale converts on-screen sizes (anchor dots) into composition pixels.
+  function renderScene(targetCtx, atTime, pixelW, pixelH, scale, showAnchors, uiScale = 1) {
+    const viewW = comp.w, viewH = comp.h;
+    targetCtx.clearRect(0, 0, viewW, viewH);
+
+    const samples = animateSamples(sampleSpline(), atTime);
+
+    const mask = document.createElement("canvas");
+    const colour = document.createElement("canvas");
+    const grain = document.createElement("canvas");
+    setCanvasTransform(mask, scale, pixelW, pixelH);
+    setCanvasTransform(colour, scale, pixelW, pixelH);
+    setCanvasTransform(grain, scale, pixelW, pixelH);
+    const maskCtx = mask.getContext("2d");
+    const colourCtx = colour.getContext("2d");
+    const grainCtx = grain.getContext("2d");
+
+    strokeRoundedPath(maskCtx, samples, +controls.width.value, "#fff");
+
+    colourCtx.save();
+    colourCtx.lineCap = "round";
+    colourCtx.lineJoin = "round";
+    colourCtx.lineWidth = +controls.width.value;
+    for (let i = 1; i < samples.length; i++) {
+      const a = samples[i - 1];
+      const b = samples[i];
+      colourCtx.strokeStyle = rgbCss(colourAt((a.t + b.t) * 0.5), 1);
+      colourCtx.beginPath();
+      colourCtx.moveTo(a.x, a.y);
+      colourCtx.lineTo(b.x, b.y);
+      colourCtx.stroke();
+    }
+    colourCtx.restore();
+    colourCtx.save();
+    colourCtx.globalCompositeOperation = "destination-in";
+    colourCtx.drawImage(mask, 0, 0, viewW, viewH);
+    colourCtx.restore();
+
+    const grainAmount = +controls.grain.value;
+    if (grainAmount > 0) {
+      // Grain cell size is set in composition pixels so the preview matches the export
+      const cells = 5 / +controls.grainScale.value;
+      const smallW = Math.max(160, Math.floor(viewW / cells));
+      const smallH = Math.max(100, Math.floor(viewH / cells));
+      const tmp = document.createElement("canvas");
+      tmp.width = smallW;
+      tmp.height = smallH;
+      const tctx = tmp.getContext("2d");
+      const img = tctx.createImageData(smallW, smallH);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const n = Math.random() * 255;
+        d[i] = n; d[i + 1] = n; d[i + 2] = n; d[i + 3] = Math.floor(255 * grainAmount);
+      }
+      tctx.putImageData(img, 0, 0);
+
+      grainCtx.save();
+      grainCtx.globalAlpha = 0.28 * grainAmount;
+      grainCtx.imageSmoothingEnabled = false;
+      grainCtx.drawImage(tmp, 0, 0, viewW, viewH);
+      grainCtx.restore();
+
+      grainCtx.save();
+      grainCtx.globalCompositeOperation = "destination-in";
+      grainCtx.drawImage(mask, 0, 0, viewW, viewH);
+      grainCtx.restore();
+    }
+
+    targetCtx.save();
+    targetCtx.drawImage(colour, 0, 0, viewW, viewH);
+    targetCtx.globalCompositeOperation = "multiply";
+    targetCtx.drawImage(grain, 0, 0, viewW, viewH);
+    targetCtx.globalCompositeOperation = "screen";
+    targetCtx.globalAlpha = 0.12 * grainAmount;
+    targetCtx.drawImage(grain, 0, 0, viewW, viewH);
+    targetCtx.restore();
+
+    if (showAnchors) drawAnchors(targetCtx, uiScale);
+  }
+
+  function drawAnchors(targetCtx, u) {
+    targetCtx.save();
+    const preview = sampleSpline(24);
+    targetCtx.lineWidth = 1 * u;
+    targetCtx.strokeStyle = "rgba(0,0,0,.18)";
+    targetCtx.setLineDash([4 * u, 6 * u]);
+    targetCtx.beginPath();
+    preview.forEach((p, i) => i ? targetCtx.lineTo(p.x, p.y) : targetCtx.moveTo(p.x, p.y));
+    targetCtx.stroke();
+    targetCtx.setLineDash([]);
+
+    points.forEach((p, i) => {
+      const active = i === selectedIndex;
+      const hot = i === hovered;
+
+      if (active) {
+        targetCtx.lineWidth = 1.5 * u;
+        targetCtx.strokeStyle = "rgba(94,84,232,.5)";
+        const c0 = { x: p.x + p.handleOut.x, y: p.y + p.handleOut.y };
+        const c1 = { x: p.x + p.handleIn.x, y: p.y + p.handleIn.y };
+        [c0, c1].forEach(c => {
+          targetCtx.beginPath();
+          targetCtx.moveTo(p.x, p.y);
+          targetCtx.lineTo(c.x, c.y);
+          targetCtx.stroke();
+        });
+        [c0, c1].forEach(c => {
+          targetCtx.beginPath();
+          targetCtx.arc(c.x, c.y, 5 * u, 0, Math.PI * 2);
+          targetCtx.fillStyle = "rgba(94,84,232,.6)";
+          targetCtx.fill();
+          targetCtx.strokeStyle = "#fff";
+          targetCtx.lineWidth = 1 * u;
+          targetCtx.stroke();
+        });
+      }
+
+      targetCtx.beginPath();
+      targetCtx.arc(p.x, p.y, (active ? 12 : hot ? 10 : 9) * u, 0, Math.PI * 2);
+      targetCtx.fillStyle = p.colour;
+      targetCtx.fill();
+      targetCtx.lineWidth = (active ? 4 : 3) * u;
+      targetCtx.strokeStyle = "#fff";
+      targetCtx.stroke();
+      targetCtx.lineWidth = (active ? 2 : 1) * u;
+      targetCtx.strokeStyle = active ? "rgba(94,84,232,.95)" : "rgba(0,0,0,.25)";
+      targetCtx.stroke();
+    });
+    targetCtx.restore();
+  }
+
+  // Frame count and per-frame time step for the export. A loop export spans whole
+  // motion cycles exactly, so the last frame flows straight back into the first.
+  function exportTiming() {
+    const fps = +controls.fps.value;
+    const period = loopPeriod();
+    let duration;
+    let looped = false;
+    if (controls.lengthMode.value === "loop" && period) {
+      duration = period * +controls.loops.value;
+      looped = true;
+    } else {
+      duration = +controls.seconds.value;
+    }
+    const frames = Math.max(1, Math.round(duration * fps));
+    return { fps, frames, step: looped ? duration / frames : 1 / fps, duration, looped };
+  }
+
+  function updateSummary() {
+    const loopMode = controls.lengthMode.value === "loop";
+    document.getElementById("loopsRow").hidden = !loopMode;
+    document.getElementById("secondsRow").hidden = loopMode;
+    const t = exportTiming();
+    const note = loopMode && !t.looped ? " (speed is 0, so no loop; using seconds)" : "";
+    document.getElementById("exportSummary").textContent =
+      `${comp.w} × ${comp.h} · ${t.duration.toFixed(2)}s · ${t.frames} frames${note}`;
+  }
+
+  function updateLabels() {
+    values.width.textContent = controls.width.value;
+    values.smoothness.textContent = (+controls.smoothness.value).toFixed(2);
+    values.grain.textContent = (+controls.grain.value).toFixed(2);
+    values.grainScale.textContent = (+controls.grainScale.value).toFixed(1);
+    values.amplitude.textContent = controls.amplitude.value;
+    values.speed.textContent = (+controls.speed.value).toFixed(2);
+    values.frequency.textContent = (+controls.frequency.value).toFixed(2);
+    values.loops.textContent = `${controls.loops.value}×`;
+    values.seconds.textContent = `${controls.seconds.value}s`;
+    updateSummary();
+  }
+
+  function pointerPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: (e.clientX - rect.left) / fit, y: (e.clientY - rect.top) / fit };
+  }
+
+  function nearestPoint(pos, threshold = 26) {
+    const limit = threshold / fit;
+    let best = null, bestDist = Infinity;
+    points.forEach((p, i) => {
+      const d = Math.hypot(p.x - pos.x, p.y - pos.y);
+      if (d < bestDist && d < limit) {
+        best = i;
+        bestDist = d;
+      }
+    });
+    return best;
+  }
+
+  function nearestHandle(pos, threshold = 10) {
+    const p = points[selectedIndex];
+    if (!p) return null;
+    const limit = threshold / fit;
+    const c0 = { x: p.x + p.handleOut.x, y: p.y + p.handleOut.y };
+    const c1 = { x: p.x + p.handleIn.x, y: p.y + p.handleIn.y };
+    const d0 = Math.hypot(p.handleOut.x, p.handleOut.y) < 1 ? Infinity : Math.hypot(c0.x - pos.x, c0.y - pos.y);
+    const d1 = Math.hypot(p.handleIn.x, p.handleIn.y) < 1 ? Infinity : Math.hypot(c1.x - pos.x, c1.y - pos.y);
+    if (d0 < d1 && d0 < limit) return { point: selectedIndex, handle: "out" };
+    if (d1 < limit) return { point: selectedIndex, handle: "in" };
+    return null;
+  }
+
+  function frame(now) {
+    // Advance by real elapsed time so the preview speed matches the exported video
+    if (lastNow !== null && playing && !exporting) time += Math.min(0.1, (now - lastNow) / 1000);
+    lastNow = now;
+    if (!exporting) {
+      const showAnchors = !sidebar.classList.contains("hidden");
+      renderScene(ctx, time, canvas.width, canvas.height, fit * dpr, showAnchors, 1 / fit);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- Export ---------- */
+
+  const overlay = document.getElementById("overlay");
+  const progressTitle = document.getElementById("progressTitle");
+  const progressText = document.getElementById("progressText");
+  const progressBar = document.getElementById("progressBar");
+  let cancelled = false;
+  let ffmpeg = null;
+
+  function showProgress(title, text, fraction) {
+    progressTitle.textContent = title;
+    progressText.textContent = text;
+    progressBar.style.width = `${Math.round(clamp(fraction, 0, 1) * 100)}%`;
+  }
+
+  class Cancelled extends Error {}
+  function checkCancelled() { if (cancelled) throw new Cancelled(); }
+
+  function download(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  function canvasToPng(c) {
+    return new Promise((resolve, reject) => {
+      c.toBlob(b => b ? b.arrayBuffer().then(buf => resolve(new Uint8Array(buf)), reject) : reject(new Error("PNG encode failed")), "image/png");
+    });
+  }
+
+  // Renders every frame of the export at full composition size and hands each PNG to onFrame
+  async function renderFrames(timing, onFrame) {
+    const c = document.createElement("canvas");
+    setCanvasTransform(c, 1, comp.w, comp.h);
+    const cctx = c.getContext("2d");
+    for (let i = 0; i < timing.frames; i++) {
+      checkCancelled();
+      renderScene(cctx, i * timing.step, comp.w, comp.h, 1, false);
+      await onFrame(i, await canvasToPng(c));
+    }
+  }
+
+  async function fetchWithProgress(url, onProgress) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Download failed (${res.status})`);
+    const total = +res.headers.get("content-length") || 0;
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (total) onProgress(received / total);
+      checkCancelled();
+    }
+    return URL.createObjectURL(new Blob(chunks, { type: "application/wasm" }));
+  }
+
+  async function loadFFmpeg() {
+    if (ffmpeg) return ffmpeg;
+    const { FFmpeg } = await import("./vendor/ffmpeg/index.js");
+    const instance = new FFmpeg();
+    showProgress("Loading encoder", "Downloading the video encoder (31 MB, first time only)", 0);
+    const wasmURL = await fetchWithProgress(`${FFMPEG_CORE}.wasm`, f =>
+      showProgress("Loading encoder", `Downloading the video encoder (${Math.round(f * 31)} of 31 MB, first time only)`, f));
+    await instance.load({ coreURL: `${FFMPEG_CORE}.js`, wasmURL });
+    ffmpeg = instance;
+    return ffmpeg;
+  }
+
+  async function exportProRes(timing) {
+    const ff = await loadFFmpeg();
+    const name = i => `f${String(i).padStart(5, "0")}.png`;
+    await renderFrames(timing, async (i, png) => {
+      await ff.writeFile(name(i), png);
+      showProgress("Rendering frames", `Frame ${i + 1} of ${timing.frames}`, (i + 1) / timing.frames * 0.4);
+    });
+    checkCancelled();
+
+    const onProgress = ({ progress }) =>
+      showProgress("Encoding ProRes 4444", `Encoding (${Math.round(clamp(progress, 0, 1) * 100)}%)`, 0.4 + clamp(progress, 0, 1) * 0.6);
+    ff.on("progress", onProgress);
+    let code;
+    try {
+      code = await ff.exec([
+        "-framerate", String(timing.fps),
+        "-i", "f%05d.png",
+        "-c:v", "prores_ks",
+        "-profile:v", "4444",
+        "-pix_fmt", "yuva444p10le",
+        "-alpha_bits", "16",
+        "-vendor", "apl0",
+        "out.mov"
+      ]);
+    } finally {
+      ff.off("progress", onProgress);
+    }
+    for (let i = 0; i < timing.frames; i++) await ff.deleteFile(name(i)).catch(() => {});
+    if (code !== 0) throw new Error("The encoder reported an error");
+    const data = await ff.readFile("out.mov");
+    await ff.deleteFile("out.mov").catch(() => {});
+    return new Blob([data.buffer], { type: "video/quicktime" });
+  }
+
+  /* Minimal store-only ZIP writer. PNGs are already compressed, so no deflate is needed. */
+  const crcTable = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(data) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < data.length; i++) c = crcTable[(c ^ data[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function makeZip(files) {
+    const enc = new TextEncoder();
+    const parts = [];
+    const central = [];
+    let offset = 0;
+    for (const { name, data } of files) {
+      const nameBytes = enc.encode(name);
+      const crc = crc32(data);
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);
+      local.setUint16(8, 0, true);
+      local.setUint16(12, 0x21, true);           // DOS date 1980-01-01
+      local.setUint32(14, crc, true);
+      local.setUint32(18, data.length, true);
+      local.setUint32(22, data.length, true);
+      local.setUint16(26, nameBytes.length, true);
+      parts.push(local.buffer, nameBytes, data);
+
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true);
+      cd.setUint16(4, 20, true);
+      cd.setUint16(6, 20, true);
+      cd.setUint16(14, 0x21, true);
+      cd.setUint32(16, crc, true);
+      cd.setUint32(20, data.length, true);
+      cd.setUint32(24, data.length, true);
+      cd.setUint16(28, nameBytes.length, true);
+      cd.setUint32(42, offset, true);
+      central.push(cd.buffer, nameBytes);
+
+      offset += 30 + nameBytes.length + data.length;
+    }
+    const centralSize = central.reduce((n, b) => n + b.byteLength, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, files.length, true);
+    end.setUint16(10, files.length, true);
+    end.setUint32(12, centralSize, true);
+    end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, end.buffer], { type: "application/zip" });
+  }
+
+  async function exportPngSequence(timing, base) {
+    const files = [];
+    await renderFrames(timing, async (i, png) => {
+      files.push({ name: `${base}/${base}_${String(i).padStart(5, "0")}.png`, data: png });
+      showProgress("Rendering frames", `Frame ${i + 1} of ${timing.frames}`, (i + 1) / timing.frames * 0.95);
+    });
+    showProgress("Packaging", "Building the zip file", 0.97);
+    return makeZip(files);
+  }
+
+  async function exportVideo() {
+    if (exporting) return;
+    exporting = true;
+    cancelled = false;
+    overlay.classList.add("open");
+    const timing = exportTiming();
+    const base = `wave-${comp.w}x${comp.h}-${timing.fps}fps`;
+    try {
+      if (controls.format.value === "prores") {
+        download(await exportProRes(timing), `${base}-prores4444.mov`);
+      } else {
+        download(await exportPngSequence(timing, base), `${base}-png.zip`);
+      }
+      overlay.classList.remove("open");
+    } catch (err) {
+      if (err instanceof Cancelled) {
+        overlay.classList.remove("open");
+      } else {
+        console.error(err);
+        showProgress("Export failed", `${err.message || err}. If the encoder failed to load or ran out of memory, try a shorter length, a smaller size, or the PNG sequence format.`, 0);
+        cancelButton.textContent = "Close";
+        await new Promise(resolve => cancelButton.addEventListener("click", resolve, { once: true }));
+        cancelButton.textContent = "Cancel";
+        overlay.classList.remove("open");
+      }
+    } finally {
+      exporting = false;
+    }
+  }
+
+  const cancelButton = document.getElementById("cancelExport");
+  cancelButton.addEventListener("click", () => {
+    if (!exporting) return;
+    cancelled = true;
+    // Stopping a running encode means killing the worker; it reloads on the next export
+    if (ffmpeg) { ffmpeg.terminate(); ffmpeg = null; }
+  });
+
+  /* ---------- Editing ---------- */
+
+  canvas.addEventListener("pointerdown", e => {
+    const pos = pointerPos(e);
+    const handleHit = nearestHandle(pos);
+    if (handleHit) {
+      draggingHandle = handleHit;
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    const hit = nearestPoint(pos);
+    if (hit !== null && e.altKey && points.length > 2) {
+      points.splice(hit, 1);
+      selectedIndex = clamp(selectedIndex, 0, points.length - 1);
+      updateSelectedUI();
+      return;
+    }
+    if (hit !== null) {
+      selectedIndex = hit;
+      updateSelectedUI();
+      dragging = hit;
+      canvas.setPointerCapture(e.pointerId);
+    }
+  });
+
+  canvas.addEventListener("pointermove", e => {
+    const pos = pointerPos(e);
+    hovered = nearestPoint(pos);
+    if (draggingHandle) {
+      const p = points[draggingHandle.point];
+      const key = draggingHandle.handle === "out" ? "handleOut" : "handleIn";
+      p[key] = { x: pos.x - p.x, y: pos.y - p.y };
+    } else if (dragging !== null) {
+      points[dragging].y = pos.y;
+    }
+  });
+
+  canvas.addEventListener("pointerup", e => {
+    dragging = null;
+    draggingHandle = null;
+    try { canvas.releasePointerCapture(e.pointerId); } catch {}
+  });
+
+  canvas.addEventListener("dblclick", e => {
+    const pos = pointerPos(e);
+    let insertAt = points.length - 1;
+    let bestDistance = Infinity;
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i], b = points[i + 1];
+      const vx = b.x - a.x, vy = b.y - a.y;
+      const len2 = vx * vx + vy * vy || 1;
+      const t = clamp(((pos.x - a.x) * vx + (pos.y - a.y) * vy) / len2, 0, 1);
+      const px = a.x + vx * t, py = a.y + vy * t;
+      const d = Math.hypot(pos.x - px, pos.y - py);
+      if (d < bestDistance) {
+        bestDistance = d;
+        insertAt = i;
+      }
+    }
+    const refColour = points[insertAt + 1] ? points[insertAt + 1].colour : palette[palette.length - 1];
+    points.splice(insertAt + 1, 0, { x: pos.x, y: pos.y, colour: refColour, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } });
+    autoHandles(points);
+    selectedIndex = insertAt + 1;
+    updateSelectedUI();
+  });
+
+  document.querySelectorAll(".swatch").forEach(btn => {
+    btn.addEventListener("click", () => setSelectedColour(btn.dataset.colour));
+  });
+  document.getElementById("customColour").addEventListener("input", e => setSelectedColour(e.target.value));
+
+  document.getElementById("reset").addEventListener("click", () => {
+    points = defaultPoints();
+    autoHandles(points);
+    selectedIndex = 0;
+    time = 0;
+    updateSelectedUI();
+  });
+  document.getElementById("pause").addEventListener("click", e => {
+    playing = !playing;
+    e.currentTarget.textContent = playing ? "Pause" : "Play";
+  });
+  document.getElementById("applyPalette").addEventListener("click", applyPaletteToPoints);
+  document.getElementById("exportVideo").addEventListener("click", exportVideo);
+
+  controls.compSize.addEventListener("change", () => {
+    const [w, h] = controls.compSize.value.split("x").map(Number);
+    setComposition(w, h);
+  });
+  controls.previewBg.addEventListener("change", () => {
+    canvas.className = `bg-${controls.previewBg.value}`;
+  });
+  Object.values(controls).forEach(input => input.addEventListener("input", updateLabels));
+  controls.lengthMode.addEventListener("change", updateLabels);
+  controls.fps.addEventListener("change", updateLabels);
+
+  addEventListener("resize", resizeMain);
+
+  resizeMain();
+  points = defaultPoints();
+  autoHandles(points);
+  updateLabels();
+  updateSelectedUI();
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>
