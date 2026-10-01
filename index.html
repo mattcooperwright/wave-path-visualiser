@@ -42,6 +42,7 @@
     user-select:none;
   }
   .sidebar.hidden{opacity:0;pointer-events:none;transform:scale(.95)}
+  .sidebar.hidden .panel{pointer-events:none}
   .sidebar-handle{
     padding:10px 14px;border-bottom:1px solid var(--line);cursor:grab;user-select:none;
     display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);font-weight:600;
@@ -234,7 +235,7 @@
   let panelHidden = false;
 
   function defaultPoints() {
-    const w = innerWidth, h = innerHeight;
+    const w = viewW(), h = viewH();
     const pts = [
       { x: w*0.03, y: h*0.55, colour: palette[0] },
       { x: w*0.14, y: h*0.72, colour: palette[1] },
@@ -271,9 +272,13 @@
     c.getContext("2d").setTransform(scale, 0, 0, scale, 0, 0);
   }
 
+  // Canvas sits below the top bar, so its drawing size must match its CSS box, not the window
+  function viewW() { return canvas.clientWidth; }
+  function viewH() { return canvas.clientHeight; }
+
   function resizeMain() {
     dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
-    setCanvasTransform(canvas, dpr, Math.floor(innerWidth * dpr), Math.floor(innerHeight * dpr));
+    setCanvasTransform(canvas, dpr, Math.floor(viewW() * dpr), Math.floor(viewH() * dpr));
   }
 
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
@@ -445,7 +450,7 @@
 
   function strokeRoundedPath(targetCtx, samples, width, style) {
     targetCtx.save();
-    targetCtx.lineCap = "square";
+    targetCtx.lineCap = "round";
     targetCtx.lineJoin = "round";
     targetCtx.lineWidth = width;
     targetCtx.strokeStyle = style;
@@ -623,8 +628,8 @@
     const p = points[selectedIndex];
     const c0 = { x: p.x + p.handleOut.x, y: p.y + p.handleOut.y };
     const c1 = { x: p.x + p.handleIn.x, y: p.y + p.handleIn.y };
-    const d0 = Math.hypot(c0.x - pos.x, c0.y - pos.y);
-    const d1 = Math.hypot(c1.x - pos.x, c1.y - pos.y);
+    const d0 = Math.hypot(p.handleOut.x, p.handleOut.y) < 1 ? Infinity : Math.hypot(c0.x - pos.x, c0.y - pos.y);
+    const d1 = Math.hypot(p.handleIn.x, p.handleIn.y) < 1 ? Infinity : Math.hypot(c1.x - pos.x, c1.y - pos.y);
     if (d0 < d1 && d0 < threshold) return { point: selectedIndex, handle: "out" };
     if (d1 < threshold) return { point: selectedIndex, handle: "in" };
     return null;
@@ -633,19 +638,19 @@
   function frame() {
     if (playing) time += 1 / 60;
     const showAnchors = !sidebar.classList.contains("hidden");
-    renderScene(ctx, innerWidth, innerHeight, canvas.width, canvas.height, dpr, showAnchors);
+    renderScene(ctx, viewW(), viewH(), canvas.width, canvas.height, dpr, showAnchors);
     requestAnimationFrame(frame);
   }
 
   function exportPNG() {
     const scale = +controls.exportScale.value;
     const exportCanvas = document.createElement("canvas");
-    const pixelW = Math.floor(innerWidth * scale);
-    const pixelH = Math.floor(innerHeight * scale);
+    const pixelW = Math.floor(viewW() * scale);
+    const pixelH = Math.floor(viewH() * scale);
     setCanvasTransform(exportCanvas, scale, pixelW, pixelH);
     const ectx = exportCanvas.getContext("2d");
 
-    renderScene(ectx, innerWidth, innerHeight, pixelW, pixelH, scale, false);
+    renderScene(ectx, viewW(), viewH(), pixelW, pixelH, scale, false);
 
     exportCanvas.toBlob(blob => {
       if (!blob) return;
