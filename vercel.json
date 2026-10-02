@@ -2,11 +2,22 @@
   "version": 2,
   "builds": [
     {
-      "src": "index.html",
+      "src": "*.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "vendor/**",
       "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/video",
+      "dest": "/video.html"
+    },
     {
       "src": "/(.*)",
       "dest": "/index.html"
