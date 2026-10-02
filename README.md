@@ -30,6 +30,7 @@ An interactive animation tool for creating flowing, gradient-coloured line anima
 
 - **ProRes 4444 `.mov` with alpha**, for After Effects, Premiere, Final Cut, DaVinci Resolve and Keynote. Encoding runs in the browser with [ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm). The first export downloads a 31 MB encoder from jsDelivr, which the browser then caches.
 - **PNG sequence `.zip` with alpha**, a lossless fallback that imports into any editor as an image sequence.
+- **Green screen `.mp4`**, for apps that ignore transparency, such as iMovie. Put it above your footage and choose the Green/Blue Screen overlay to key out the green.
 
 Frames are rendered one by one at the chosen frame rate rather than screen-recorded, so the output is smooth on any machine. "Seamless loop" sets the length to a whole number of motion cycles, so the clip loops without a jump.
 

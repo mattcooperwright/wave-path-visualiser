@@ -197,6 +197,7 @@
     <select id="format">
       <option value="prores" selected>ProRes 4444 .mov (alpha)</option>
       <option value="png">PNG sequence .zip (alpha)</option>
+      <option value="greenscreen">Green screen .mp4 (for iMovie)</option>
     </select>
   </div>
   <div class="row"><label>Length</label>
@@ -217,7 +218,7 @@
   </div>
 
   <div class="hint">
-    <strong>How to use:</strong> Drag a point up or down to reshape the wave. Double-click to add a point, Alt-click to delete one. Drag the blue handles to adjust curve angles. The first ProRes export downloads a 31 MB encoder, which your browser then caches.
+    <strong>How to use:</strong> Drag a point up or down to reshape the wave. Double-click to add a point, Alt-click to delete one. Drag the blue handles to adjust curve angles. The first video export downloads a 31 MB encoder, which your browser then caches. iMovie ignores transparency, so for iMovie use the green screen MP4 with its Green/Blue Screen overlay.
   </div>
 </section>
 </nav>
@@ -773,14 +774,22 @@
     });
   }
 
-  // Renders every frame of the export at full composition size and hands each PNG to onFrame
-  async function renderFrames(timing, onFrame) {
+  // Renders every frame of the export at full composition size and hands each PNG to onFrame.
+  // With a background colour the frame is flattened onto it; otherwise it stays transparent.
+  async function renderFrames(timing, onFrame, background = null) {
     const c = document.createElement("canvas");
     setCanvasTransform(c, 1, comp.w, comp.h);
     const cctx = c.getContext("2d");
     for (let i = 0; i < timing.frames; i++) {
       checkCancelled();
       renderScene(cctx, i * timing.step, comp.w, comp.h, 1, false);
+      if (background) {
+        cctx.save();
+        cctx.globalCompositeOperation = "destination-over";
+        cctx.fillStyle = background;
+        cctx.fillRect(0, 0, comp.w, comp.h);
+        cctx.restore();
+      }
       await onFrame(i, await canvasToPng(c));
     }
   }
@@ -815,38 +824,46 @@
     return ffmpeg;
   }
 
-  async function exportProRes(timing) {
+  // Encoder settings per video format. Green screen is the chroma-key colour iMovie and Final Cut expect.
+  const VIDEO_FORMATS = {
+    prores: {
+      label: "ProRes 4444",
+      out: "out.mov",
+      type: "video/quicktime",
+      args: ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-alpha_bits", "16", "-vendor", "apl0"]
+    },
+    greenscreen: {
+      label: "green screen MP4",
+      out: "out.mp4",
+      type: "video/mp4",
+      background: "#00b140",
+      args: ["-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart"]
+    }
+  };
+
+  async function exportWithFFmpeg(timing, format) {
     const ff = await loadFFmpeg();
     const name = i => `f${String(i).padStart(5, "0")}.png`;
     await renderFrames(timing, async (i, png) => {
       await ff.writeFile(name(i), png);
       showProgress("Rendering frames", `Frame ${i + 1} of ${timing.frames}`, (i + 1) / timing.frames * 0.4);
-    });
+    }, format.background);
     checkCancelled();
 
     const onProgress = ({ progress }) =>
-      showProgress("Encoding ProRes 4444", `Encoding (${Math.round(clamp(progress, 0, 1) * 100)}%)`, 0.4 + clamp(progress, 0, 1) * 0.6);
+      showProgress(`Encoding ${format.label}`, `Encoding (${Math.round(clamp(progress, 0, 1) * 100)}%)`, 0.4 + clamp(progress, 0, 1) * 0.6);
     ff.on("progress", onProgress);
     let code;
     try {
-      code = await ff.exec([
-        "-framerate", String(timing.fps),
-        "-i", "f%05d.png",
-        "-c:v", "prores_ks",
-        "-profile:v", "4444",
-        "-pix_fmt", "yuva444p10le",
-        "-alpha_bits", "16",
-        "-vendor", "apl0",
-        "out.mov"
-      ]);
+      code = await ff.exec(["-framerate", String(timing.fps), "-i", "f%05d.png", ...format.args, format.out]);
     } finally {
       ff.off("progress", onProgress);
     }
     for (let i = 0; i < timing.frames; i++) await ff.deleteFile(name(i)).catch(() => {});
     if (code !== 0) throw new Error("The encoder reported an error");
-    const data = await ff.readFile("out.mov");
-    await ff.deleteFile("out.mov").catch(() => {});
-    return new Blob([data.buffer], { type: "video/quicktime" });
+    const data = await ff.readFile(format.out);
+    await ff.deleteFile(format.out).catch(() => {});
+    return new Blob([data.buffer], { type: format.type });
   }
 
   /* Minimal store-only ZIP writer. PNGs are already compressed, so no deflate is needed. */
@@ -928,7 +945,9 @@
     const base = `wave-${comp.w}x${comp.h}-${timing.fps}fps`;
     try {
       if (controls.format.value === "prores") {
-        download(await exportProRes(timing), `${base}-prores4444.mov`);
+        download(await exportWithFFmpeg(timing, VIDEO_FORMATS.prores), `${base}-prores4444.mov`);
+      } else if (controls.format.value === "greenscreen") {
+        download(await exportWithFFmpeg(timing, VIDEO_FORMATS.greenscreen), `${base}-greenscreen.mp4`);
       } else {
         download(await exportPngSequence(timing, base), `${base}-png.zip`);
       }
