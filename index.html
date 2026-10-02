@@ -74,8 +74,6 @@
     padding:8px 10px;font-size:12px;cursor:pointer;color:var(--ink)
   }
   button.btn:hover{background:#f6f6f6}
-  .swatches{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px}
-  .swatch{width:24px;height:24px;border-radius:999px;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.16);cursor:pointer;padding:0}
   .selected-info{
     display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.03);
     border:1px solid rgba(0,0,0,.06);border-radius:10px;padding:8px 10px;font-size:12px;margin-top:6px
@@ -109,7 +107,7 @@
   </div>
   <section id="panel" class="panel">
   <h1>Wave Path Visualiser</h1>
-  <p>Smoother spline, hidable controls, fixed gradient colours, animated wave motion, background colour control, and high-resolution PNG export.</p>
+  <p>Smoother spline, hidable controls, a fixed gradient, animated wave motion, background colour control, and high-resolution PNG export.</p>
 
   <div class="subhead">Shape</div>
   <div class="row"><label>Tube width</label><input id="width" type="range" min="50" max="240" value="120"><div id="widthVal" class="value"></div></div>
@@ -131,21 +129,6 @@
     <input id="bgColour" type="color" value="#efede8" title="Background colour">
   </div>
 
-  <div class="subhead">Colours</div>
-  <div class="selected-info">
-    <div><span id="selectedDot" class="dot" style="background:#d6c541"></span><span id="selectedLabel">Selected point: 1</span></div>
-    <input id="customColour" type="color" value="#d6c541" title="Selected point colour">
-  </div>
-  <div class="swatches">
-    <button class="swatch" data-colour="#d6c541" style="background:#d6c541" title="Gold"></button>
-    <button class="swatch" data-colour="#e6af39" style="background:#e6af39" title="Warm gold"></button>
-    <button class="swatch" data-colour="#ef5a2b" style="background:#ef5a2b" title="Orange"></button>
-    <button class="swatch" data-colour="#e43870" style="background:#e43870" title="Pink"></button>
-    <button class="swatch" data-colour="#5b20b7" style="background:#5b20b7" title="Purple"></button>
-    <button class="swatch" data-colour="#2f4ca7" style="background:#2f4ca7" title="Blue"></button>
-    <button class="swatch" data-colour="#68a733" style="background:#68a733" title="Green"></button>
-  </div>
-
   <div class="subhead">Export</div>
   <div class="row"><label>PNG scale</label><input id="exportScale" type="range" min="1" max="6" step="1" value="3"><div id="exportScaleVal" class="value"></div></div>
 
@@ -153,12 +136,11 @@
     <button id="reset" class="btn">Reset</button>
     <button id="pause" class="btn">Pause</button>
     <button id="randomise" class="btn">Randomise</button>
-    <button id="applyPalette" class="btn">Reapply palette</button>
     <button id="save" class="btn">Save hi-res PNG</button>
   </div>
 
   <div class="hint">
-    <strong>How to use:</strong> Click a point to select it. Double-click to add a point. Alt-click to delete. Drag the blue handles to adjust curve angles. Recolour with the swatches.
+    <strong>How to use:</strong> Click a point to select it. Double-click to add a point. Alt-click to delete. Drag the blue handles to adjust curve angles.
   </div>
 </section>
 </nav>
@@ -237,13 +219,13 @@
   function defaultPoints() {
     const w = viewW(), h = viewH();
     const pts = [
-      { x: w*0.03, y: h*0.55, colour: palette[0] },
-      { x: w*0.14, y: h*0.72, colour: palette[1] },
-      { x: w*0.30, y: h*0.26, colour: palette[2] },
-      { x: w*0.47, y: h*0.72, colour: palette[2] },
-      { x: w*0.63, y: h*0.40, colour: palette[3] },
-      { x: w*0.80, y: h*0.72, colour: palette[4] },
-      { x: w*0.96, y: h*0.55, colour: palette[5] }
+      { x: w*0.03, y: h*0.55 },
+      { x: w*0.14, y: h*0.72 },
+      { x: w*0.30, y: h*0.26 },
+      { x: w*0.47, y: h*0.72 },
+      { x: w*0.63, y: h*0.40 },
+      { x: w*0.80, y: h*0.72 },
+      { x: w*0.96, y: h*0.55 }
     ];
     return pts.map((p, i) => ({ ...p, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } }));
   }
@@ -301,40 +283,9 @@
     };
   }
 
-  function updateSelectedUI() {
-    const p = points[selectedIndex];
-    if (!p) return;
-    document.getElementById("selectedLabel").textContent = `Selected point: ${selectedIndex + 1}`;
-    document.getElementById("selectedDot").style.background = p.colour;
-    document.getElementById("customColour").value = p.colour;
-  }
-
   function updateBackgroundUI() {
     document.getElementById("bgDot").style.background = controls.bgColour.value;
     document.documentElement.style.setProperty("--bg", controls.bgColour.value);
-  }
-
-  function setSelectedColour(colour) {
-    if (!points[selectedIndex]) return;
-    points[selectedIndex].colour = colour;
-    updateSelectedUI();
-  }
-
-  function applyPaletteToPoints() {
-    points.forEach((p, i) => {
-      const t = i / Math.max(1, points.length - 1);
-      const scaled = t * (palette.length - 1);
-      const idx = Math.floor(scaled);
-      const frac = scaled - idx;
-      const c = mixColours(
-        palette[clamp(idx, 0, palette.length - 1)],
-        palette[clamp(idx + 1, 0, palette.length - 1)],
-        frac
-      );
-      const toHex = n => Math.round(n).toString(16).padStart(2, "0");
-      p.colour = `#${toHex(c.r)}${toHex(c.g)}${toHex(c.b)}`;
-    });
-    updateSelectedUI();
   }
 
   function cubicBezier(p0, c0, c1, p1, t) {
@@ -582,7 +533,7 @@
 
         targetCtx.beginPath();
         targetCtx.arc(p.x, p.y, active ? 12 : hot ? 10 : 9, 0, Math.PI * 2);
-        targetCtx.fillStyle = p.colour;
+        targetCtx.fillStyle = rgbCss(colourAt(i / Math.max(1, points.length - 1)));
         targetCtx.fill();
         targetCtx.lineWidth = active ? 4 : 3;
         targetCtx.strokeStyle = "#fff";
@@ -695,12 +646,10 @@
     if (hit !== null && e.altKey && points.length > 2) {
       points.splice(hit, 1);
       selectedIndex = clamp(selectedIndex, 0, points.length - 1);
-      updateSelectedUI();
       return;
     }
     if (hit !== null) {
       selectedIndex = hit;
-      updateSelectedUI();
       dragging = hit;
       canvas.setPointerCapture(e.pointerId);
     }
@@ -742,32 +691,24 @@
         insertAt = i;
       }
     }
-    const refColour = points[insertAt + 1] ? points[insertAt + 1].colour : palette[palette.length - 1];
-    points.splice(insertAt + 1, 0, { x: pos.x, y: pos.y, colour: refColour, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } });
+    points.splice(insertAt + 1, 0, { x: pos.x, y: pos.y, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } });
     autoHandles(points);
     selectedIndex = insertAt + 1;
-    updateSelectedUI();
   });
 
-  document.querySelectorAll(".swatch").forEach(btn => {
-    btn.addEventListener("click", () => setSelectedColour(btn.dataset.colour));
-  });
 
-  document.getElementById("customColour").addEventListener("input", e => setSelectedColour(e.target.value));
   controls.bgColour.addEventListener("input", updateBackgroundUI);
   document.getElementById("reset").addEventListener("click", () => {
     points = defaultPoints();
     autoHandles(points);
     selectedIndex = 0;
     time = 0;
-    updateSelectedUI();
   });
   document.getElementById("pause").addEventListener("click", e => {
     playing = !playing;
     e.currentTarget.textContent = playing ? "Pause" : "Play";
   });
   document.getElementById("randomise").addEventListener("click", randomiseAnimation);
-  document.getElementById("applyPalette").addEventListener("click", applyPaletteToPoints);
   document.getElementById("save").addEventListener("click", exportPNG);
   Object.values(controls).forEach(input => input.addEventListener("input", updateLabels));
 
@@ -776,14 +717,12 @@
     points = defaultPoints();
     autoHandles(points);
     selectedIndex = clamp(selectedIndex, 0, points.length - 1);
-    updateSelectedUI();
   });
 
   resizeMain();
   points = defaultPoints();
   autoHandles(points);
   updateLabels();
-  updateSelectedUI();
   updateBackgroundUI();
   frame();
 })();
